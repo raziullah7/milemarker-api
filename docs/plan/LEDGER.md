@@ -49,3 +49,5 @@ Repo: this repository (commit identity must be `Razi Ullah <50240668+raziullah7@
 - Controller's own full live run: 49 of 49 passed. Results merged into docs/test-cases.md. Seven trips pinned in tests/test_regression.py. Live routing calls so far: about 77 of 100.
 - **Phase 5: complete (commits 9a0fcd6, 41897a8).** Gate 5 passed.
 - Phase 6 started. One builder (6K, Sonnet): Dockerfile, entrypoint, Compose api and test services. Brief: briefs/phase6-K-docker.md. It may make one live routing call (Dallas to Houston).
+- Phase 6 BASE: b5a5647
+- Phase 6 task 6K (Docker) reviewed by the controller: Dockerfile, entrypoint, .dockerignore, Compose read in full. Controller ran 9 live cases against the container (9 passed), the suite in a container (348 passed) and on the host (348 passed); 6,626 station rows after a restart. Live routing calls so far: about 83 of 100.

@@ -1,7 +1,10 @@
-# PostgreSQL for the Mile Marker API.
+# Mile Marker API and its PostgreSQL.
 #
-#   docker compose up -d db      start the database
-#   docker compose down          stop it (add -v to delete its data as well)
+#   docker compose up --build -d                  build, start the database and the API on port 8000
+#   docker compose logs -f api                    follow the station load, then the server
+#   docker compose --profile test run --rm test   run the test suite in a container
+#   docker compose down                           stop (add -v to delete the database as well)
+#   docker compose up -d db                       the database alone, to run the API from source
 #
 # The user, password and database name below are local development defaults, not secrets.
 # They match the default DATABASE_URL in config/settings.py.
@@ -23,6 +26,33 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  api:
+    build: .
+    environment:
+      # "db" is the service name; inside Compose it resolves to the database container.
+      DATABASE_URL: postgresql://milemarker:milemarker@db:5432/milemarker
+    ports:
+      # Set API_PORT if 8000 is already taken on this machine.
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  test:
+    build:
+      context: .
+      args:
+        WITH_TEST_TOOLS: "1"
+    environment:
+      DATABASE_URL: postgresql://milemarker:milemarker@db:5432/milemarker
+    # The code directory is read-only for the app user, so pytest cannot keep its cache there.
+    command: ["pytest", "-p", "no:cacheprovider"]
+    depends_on:
+      db:
+        condition: service_healthy
+    # Not started by "docker compose up"; only by "--profile test".
+    profiles: ["test"]
 
 volumes:
   pgdata: {}

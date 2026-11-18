@@ -1,0 +1,13 @@
+# Local state that must not reach the image: history, a Windows virtual environment
+# (the image builds its own), caches, and local settings that may hold secrets.
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.env
+
+# Research working data, fetched again by its scripts.
+docs/plan/research/cache
+docs/plan/research/out
