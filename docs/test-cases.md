@@ -183,15 +183,16 @@ All cases use the equator road (1,000 miles), radius 5 and thinning 10 unless st
 | FU-23 | UC-03 | `cheapest_fuel([0, 0.03], [3.50, 3.00], 300)` | (0, 0.003), (1, 29.997); fuel cost 90.0015; 1 counted stop, because a purchase under 0.005 gallons is not counted |
 | FU-24 | UC-10 | `find_gap`: ([0], 500); ([0], 500.1); ([0, 100], 700); ([0, 503], 990); ([0, 495, 503], 990) | `None`; (0, 500.1); (100, 600); (0, 503); `None`. Each result is the mile where the gap starts and its length |
 | FU-25 | UC-10 | `plan_stops` and `cheapest_fuel` on the inputs of FU-12, FU-13, FU-14 and FU-16 | Neither returns a plan |
+| FU-26 | UC-03 | `plan_stops([0, 100, 200], [3.00, 3.00, 3.00], 400, 0)`; then with total 600 | (0, 40); then (0, 10), (1, 50). Equal costs are settled the same way every time: fewer stops, then the earlier station |
 
 ### 2.7 Exactness: the fuel plan against two exact methods
 
 | ID | UC | Input | Expected |
 |---|---|---|---|
 | EX-01 | UC-01 | 400 random trips from a fixed seed: 1 to 28 stations, total 50 to 3,000 miles, mile markers to 0.1 mile, prices 2.600 to 4.500 to 3 decimals, and in 30% of trips prices drawn only from {2.90, 3.10, 3.30}. Stop cost 0 | For every feasible trip, the fuel cost of `plan_stops` and of `cheapest_fuel` equals the linear-programming optimum within $0.000001. For every infeasible trip, the solver, `plan_stops` and `find_gap` all report no plan |
-| EX-02 | UC-03 | 250 random trips from a fixed seed: 1 to 10 stations, total 100 to 1,800 miles, stop cost drawn from {1, 5, 10, 25, 60} | Fuel cost + stop cost × stops of `plan_stops` equals the minimum over every subset of stations, each subset priced by the linear-programming solver, within $0.000001 |
+| EX-02 | UC-03 | 250 random trips from a fixed seed: 1 to 8 stations, total 100 to 1,800 miles, stop cost drawn from {1, 5, 10, 25, 60}. The same check with 1 to 10 stations (13,506 solver calls, about 30 seconds) runs with `uv run pytest -m slow` | Fuel cost + stop cost × stops of `plan_stops` equals the minimum over every subset of stations, each subset priced by the linear-programming solver, within $0.000001 |
 | EX-03 | UC-01 | Every plan produced in EX-01 and EX-02, replayed mile by mile | Tank never below −1e-9 or above 50 + 1e-9 gallons; gallons sum to total ÷ 10 (±1e-9); no stretch between purchases, or to the finish, over 500 miles |
-| EX-04 | UC-03 | 100 random trips from a fixed seed, each planned at stop costs 0, 5, 10, 25 and 60 | As the stop cost rises, the number of stops never rises and the fuel cost never falls |
+| EX-04 | UC-03 | 100 random trips from a fixed seed, drawn as in EX-01, each planned at stop costs 0, 5, 10, 25 and 60 | As the stop cost rises, the number of stops never rises and the fuel cost never falls |
 
 ### 2.8 Answer and rounding: `trips/services/answer.py`
 
