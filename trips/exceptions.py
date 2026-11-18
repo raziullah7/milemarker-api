@@ -24,25 +24,31 @@ class NoRoute(MileMarkerError):
 class RouteLeavesUSA(MileMarkerError):
     """The road runs through Canada or Mexico for more than the allowed stretch.
 
-    details: miles_abroad, the longest unbroken stretch outside the USA
+    details: miles_abroad, the longest unbroken stretch outside the USA, to 0.1 mile
     """
 
     code = "route_leaves_usa"
 
     def __init__(self, message: str, *, miles_abroad: float):
-        super().__init__(message, miles_abroad=miles_abroad)
+        # Miles are shown to 1 decimal everywhere; the caller reads these details.
+        super().__init__(message, miles_abroad=round(miles_abroad, 1))
 
 
 class NoFuelPlan(MileMarkerError):
     """A stretch of more than 500 miles has no station, so no plan exists.
 
-    details: gap_start_mile (where that stretch begins), gap_miles (its length)
+    details: gap_start_mile (where that stretch begins), gap_miles (its length), each
+             to 0.1 mile
     """
 
     code = "no_fuel_plan"
 
     def __init__(self, message: str, *, gap_start_mile: float, gap_miles: float):
-        super().__init__(message, gap_start_mile=gap_start_mile, gap_miles=gap_miles)
+        # Rounded only here, in what the caller reads; the fuel routines that find the
+        # gap keep working with exact miles.
+        super().__init__(
+            message, gap_start_mile=round(gap_start_mile, 1), gap_miles=round(gap_miles, 1)
+        )
 
 
 class RoutingUnavailable(MileMarkerError):
