@@ -38,3 +38,4 @@ Repo: this repository (commit identity must be `Razi Ullah <50240668+raziullah7@
 - Phase 4 started. One builder (4E, Opus): planner, view, serializers, urls, errors, with EP-01 to EP-40 and S04. Brief: briefs/phase4-E-api.md.
 - Phase 4 BASE: 3a99e21
 - Phase 4 task 4E (the API) reviewed by the controller: one review round (cold start, rounded error miles, always JSON, labels in the cache key, minus zero). Suite 294 passed, run by the controller. First live calls made by the controller: New York to Los Angeles 7 stops, $867.27, own work 19.4 ms; repeat 0 calls; stop_cost=0 gives 19 stops, $855.95.
+- **Phase 4: complete (commit 1565cde).** Gate 4 passed.
