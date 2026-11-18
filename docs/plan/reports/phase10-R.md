@@ -123,3 +123,71 @@ No backward shift passes anywhere. On the New York answer, shifts of −5, −2,
 - **pre-commit.** I did not run it myself; builder B reports a clean run on a copy.
 - **Dependabot.** Its behaviour is from GitHub's documentation, not observed.
 - **N7 (b).** I did not re-run the builder's mutant.
+
+## Re-review of the fixes
+
+Second pass, 18 Nov 2026, scope as the controller set it: the fixes for R10-01 to R10-14, R10-16 and R10-17, against the rulings in `docs/plan/PHASE-10.md` ("Rulings on the review (10R)").
+
+**State reviewed.** I reviewed the changes as uncommitted on top of `978e63f`. While I worked, the controller committed them as `4bc1b9f`. My scratch copy's `tests/verify.py`, `tests/test_verify.py`, `trips/services/answer.py`, `config/settings.py`, `scripts/fake_osrm.py` and `.github/workflows/ci.yml` are byte for byte that commit's.
+
+**What passes in that copy and in the repository:**
+- The suite: `463 passed, 1 deselected`.
+- The slow test: `1 passed`.
+- Ruff, the format check and mypy: clean.
+
+CI run 44337965292, on `4bc1b9f`, is green:
+- **`checks`:** `uv sync --locked`; `463 passed`; coverage 98.41%; the slow test passed; `pip-audit` found nothing.
+- **`e2e`:** Newman ran 14 requests and 111 assertions, none failing, and the stand-in's log held `count` 8.
+
+I read the builder's "Second pass" only after forming my view from the diff.
+
+**Counts:**
+- Findings not closed: **0**.
+- New findings: **0 Critical, 0 Important, 0 Minor, 3 Notes** (R10-18 to R10-20). Two of them are what remains of R10-01 and R10-02 once those are closed as ruled.
+
+"Undone" below means I put the old code back in a scratch copy, ran the named tests, and restored the file.
+
+| Finding | Closed? | How I checked |
+|---|---|---|
+| R10-01 R17 | **Closed.** | **My own experiment, repeated.** With the planner's radius at 8.05 miles, **14 of the 61 real answers** (QB-02's 54 and VF-01's 7) now fail on R17, where none did before. Other radii: 5.5 miles fails 6, 6 miles 6, 7 miles 12, 10 miles 15. **My four swapped stations each now fail on R17 alone**: North Jackson OH 10.57 miles from where a station of that place stands, Tonica IL 10.34, Aurora NE 12.06, Hudson CO 9.54. **Undone** (15 miles of any row): QB-18's four cases fail. The rule is the one ruled; what it still accepts is R10-18. |
+| R10-02 R13 | **Closed as ruled**, with one justified exception (item 2 below). | **Undone, repeats allowed:** QB-20's repeated middle point fails. **Undone, count back to 1%:** QB-20's 30 added points fail. QB-19 is caught by both halves, so either alone still refuses it. What can still be hidden is R10-19. |
+| R10-03 third server | **Closed.** | **Undone:** CF-37 fails. The default, the stand-in's single template and CF-08's two entries all load. Architecture section 18 was not updated: R10-20. |
+| R10-04 `--locked` | **Closed.** | `uv sync --locked --dry-run --offline` on the current tree succeeds, so the lock is current. In the first pass I showed that `--locked` refuses a stale lock. CI ran it green. |
+| R10-05 Dependabot | **Closed.** | `docker-compose` is a valid `package-ecosystem` value. GitHub's Dependabot options reference lists it: "Docker Compose \| `docker-compose` \| v2, v3". |
+| R10-06 query in the log | **Closed.** | **Undone** (log `self.path`): SI-07 fails. CI's log paths carry no query. |
+| R10-07 start counted | **Closed.** | **Undone:** QB-22 fails. AN-11 now has its tiny purchase after the start, so dropping it still fails AN-11 (85.00 against 85.01); the builder shows that with a mutant. The 8 regression pins pass, so no real answer changed. That is expected: a real start purchase is at least 0.05 gallons. |
+| R10-08 section 6 | **Closed.** | The new sentence matches `resolve()` on each of its three examples, which I had probed in the first pass. |
+| R10-09 no-road tests | **Closed.** | **Undone, "no road" read only at 400 and 200:** QB-23's 404 case fails. **Undone, the `status < 500` guard removed:** QB-23's 503 case fails. |
+| R10-10 any 400 | **Closed** (it stands, as ruled). | The sentence is in section 9. |
+| R10-11 unknown path | **Closed.** | **Undone** (404 again): SI-12 fails. The client now ends the request on the stand-in's answer, as it would on OSRM's. With one server in the stack the outcome is the same, and CI is green. A POST to an unknown path still answers 404; that is harmless, since the client only sends GET. |
+| R10-12 bare string | **Closed.** | **Undone:** QB-21 fails. `scripts/live_check.py` passes a list. |
+| R10-13 hand-added copy | **Closed.** | **Undone** (the verifier's Henrico 0.1° of longitude off): the new table comparison fails. So does the old VR-04, now that R17 allows only 5.01 miles. |
+| R10-14 timeouts and count | **Closed.** | `timeout-minutes: 20` on each job; Newman's `--timeout-request 60000` is a real option, also used by `make e2e`. **The exact-8 check holds.** Of the collection's 14 requests, 8 need a road: 1 for the Demo folder, 5 in "More trips", and Detroit to Buffalo and Los Angeles to Seattle among the errors. The other 6 hit the cache or are refused before routing. CI's run logged `count` 8, and the step passed. The figure is tied to the collection, so it must change in the same commit as any change to the collection's trips (Phase 13). |
+| R10-16 0.005 wording | **Closed.** | The comment at `tests/test_fuel.py:178` and FU-23's row now describe what the test asserts, not a counting rule. |
+| R10-17 B's row | **Closed.** | The row now says the delay was removed and gives the command `make -n e2e` prints. The "Command" cell still shows the old command beside that correction, which reads oddly but is not wrong. |
+
+R10-15 is carried to Phase 11 and was not in scope.
+
+**2. The exception in R13 (end point may repeat the one before it).**
+- **The reason is true.** With the exception removed, 27 tests fail with "repeated points": 26 endpoint tests in `tests/test_api.py` and VR-03. Their straight test roads are whole numbers of miles long. A real road ends that way only when its last stretch is under about a metre, roughly 1 trip in 1,000, so the exception is needed for real answers too, rarely.
+- **It reopens the padding attack only by the one point it allows.** Method: I added one copy of the last point, moved each station stop to the farthest line point that R12 and R17 both accept, and kept the markers. That passes all 17 rules on `nyc_la`, `sea_mia` and `bos_sea` at stop cost 10. The largest stretch hidden this way is **0.53 mile** (`bos_sea`); on New York it is 0.50 mile. Before the fixes, 30 repeats hid 2.5 miles.
+- **The builder's account** says one extra end point can move a stop at most half a mile near the finish, which matches. It also says the bracket "already allowed" this, which held only on roads whose last straight gap is short (2 of 19 in my first-pass table). The repeat makes it available on any road.
+
+**3. Did any fix break or weaken something nearby?**
+- **R17 depends on where the application places a station. That is safe today.**
+  - All 6,626 stations stand exactly on one of R17's points (largest distance 0.0).
+  - Each of the 22 cities in `COUNTY_FOR_CITY` has exactly one row in its chosen county, so no station stands at a county mean that R17 would not know.
+  - If `stations/places.py` changed its rule, R17 would fail correct answers, which QB-02 would show at once. That is the safe direction.
+- **The start always counted:** nothing nearby weakened. QB-07's count still agrees, `max(1, …)` is no longer needed, and R7's floor of 1 still holds.
+- **The third server refused:** nothing broke. The tests that set `settings.ROUTING_SERVERS` directly bypass the parsing, as before.
+- **The stand-in's 400:** nothing broke. Its health check and CI read only paths it serves. That 400 `InvalidUrl` is what the real server sends I could not check (no public requests); the first server's software answers so by its documentation, and the second may answer differently behind its proxy.
+
+**4. The controller's CI and Dependabot fixes:** both hold, as the rows for R10-04, R10-05 and R10-14 show.
+
+### New findings
+
+| ID | Severity | Where | What is wrong | How I showed it | Smallest fix |
+|---|---|---|---|---|---|
+| R10-18 | Note | `tests/verify.py`, R17 (`[mean, *rows]`) | **What R17 still accepts beyond each station's real place.** R17 accepts the mean of a city's rows *or any one row*, but the application uses the mean unless the rows are more than 10 miles apart. So for 306 of the 6,626 stations (4.6%), R17 accepts a point other than the station's place more than 0.5 mile from it, and for 99 more than 10 miles (Orlando FL 48.1, Philadelphia 22.2). A stop of theirs passes up to 5.01 miles plus that distance from the station. That was the ruling's choice, and the main gap of R10-01 is closed. | Each station's place compared with every point R17 accepts for its city. | Follow section 6 as the application does: the mean when the city's rows lie within 10 miles of each other, otherwise one row. Every station's place is still accepted (none excluded), and the stations with a far extra point fall from 306 to 106, all in the wide cities. Copying the 22-county table, as the hand-added places are copied, would remove the rest. |
+| R10-19 | Note | `tests/verify.py`, R12 and R13 | **Distinct extra points, within R13's count slack, still let a stretch be hidden by about a mile.** R13 now refuses repeats but accepts added points that are all different, up to 0.25% or 2 points. Builder C's QB-20 shows 19 such points pass, but no test checks whether they let stops move. R17's 5.01 miles now caps how far a stop can be moved. | Points added between the last two, the end repeat used or not, each stop moved to the farthest point that R12 and R17 accept. All 17 rules passed with up to **1.08 miles** hidden in one stretch (`dal_phx`), 1.02 on `sea_mia`, and 0.97 on New York at stop cost 10, where a real 500.8-mile stretch shows as 499.8. The comparison is 2.5 miles before the fixes, across 7 long roads at stop costs 0, 10 and 25. | Say in R12's text that it takes its scale from the line, so a line with added points can shift stops by about a mile. If more is wanted: R12 drops a repeated end point before taking its scale, which makes the exception give nothing. |
+| R10-20 | Note | `docs/backend-architecture.md:692`, `:696` (section 18) | The configuration table and "`ROUTING_SERVERS` is checked at start-up" do not say that at most two entries are allowed. `config/settings.py`'s comment and CF-37 do. | Read. | Add "one or two templates" to the table and the start-up paragraph. |

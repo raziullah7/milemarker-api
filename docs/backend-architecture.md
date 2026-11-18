@@ -693,7 +693,7 @@ All of it comes from the environment (NFR-20). Every default makes a fresh clone
 | `WEB_CONCURRENCY` | 2 | The number of gunicorn worker processes (NFR-19) |
 | `LOG_LEVEL` | `INFO` | The lowest level of message written to the log |
 
-**`ROUTING_SERVERS` is checked at start-up.** Each entry is trimmed, and empty entries are dropped. A value that is empty or only spaces counts as not set, and the two public servers are used: Compose passes the variable through, so on a fresh clone it arrives empty. If the value is anything else and no entry is left, or an entry has no `{coords}`, the API refuses to start: Django raises `ImproperlyConfigured`, naming the variable and the entry.
+**`ROUTING_SERVERS` is checked at start-up.** Each entry is trimmed, and empty entries are dropped. At most two entries are allowed, because a request never makes more than two routing calls (NFR-2); a third is refused like any other bad value. A value that is empty or only spaces counts as not set, and the two public servers are used: Compose passes the variable through, so on a fresh clone it arrives empty. If the value is anything else and no entry is left, or an entry has no `{coords}`, the API refuses to start: Django raises `ImproperlyConfigured`, naming the variable and the entry.
 
 ### Stopping
 

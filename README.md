@@ -130,12 +130,13 @@ The routing call took 2,646 ms on the first live request.
 
 ## Tests
 
-348 tests, plus one slow test that runs with `-m slow`. No test uses the network. The kinds:
+463 tests, plus one slow test that runs with `-m slow`. No test reaches beyond this machine. The kinds:
 
 - **Unit:** places, distance, geometry, station search, fuel plan, answer builder, routing client.
 - **Exactness:** the fuel plan against a linear-programming solver (400 random trips) and against brute force over every subset of stations (250 trips).
 - **Integration:** the loader, the station index and the endpoint, with PostgreSQL and a fake routing service.
-- **Independent verifier:** `tests/verify.py` checks 16 rules on every successful response. It imports nothing from the API.
+- **Independent verifier:** `tests/verify.py` checks 17 rules on every successful response. It imports nothing from the API.
+- **End to end:** `scripts/fake_osrm.py` stands in for the routing server, answering from recorded real roads, so the whole stack and the Postman collection run with no call to the internet. CI does this on every push.
 - **Live:** `scripts/live_check.py` runs 49 cases against a running server. Last run, 18 Nov 2026: 49 passed.
 
 ```bash
@@ -146,6 +147,16 @@ npx newman run docs/postman/milemarker.postman_collection.json --env-var base_ur
 ```
 
 The live cases call the public routing server, so run them against a freshly started API. The last command runs the Postman collection under Newman; you can also import it into Postman.
+
+To run the collection without the public routing server, start the stack with the stand-in:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.e2e.yml up --build -d
+npx newman run docs/postman/milemarker.postman_collection.json --env-var base_url=http://127.0.0.1:8000
+docker compose -f docker-compose.yml -f docker-compose.e2e.yml down
+```
+
+With GNU make, `make help` lists these and the other everyday commands as targets: `make up`, `make test`, `make lint`, `make e2e-up`, `make e2e`, and so on. Each target runs one of the plain commands shown in this file.
 
 ## Run from source
 
@@ -159,7 +170,7 @@ uv run python manage.py load_stations
 uv run python manage.py runserver 127.0.0.1:8000 --noreload
 ```
 
-Restart the server after reloading the stations. `.env.example` lists the three settings, all optional.
+Restart the server after reloading the stations. `.env.example` lists the settings, all optional.
 
 ## Project layout
 
