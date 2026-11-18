@@ -46,7 +46,7 @@ Briefs: `briefs/phase15-F1-places.md`, `briefs/phase15-F2-backend.md`, then the 
 - [x] The database-down proof gives 503 on both addresses
 - [x] Postman on the stand-in: every assertion passes, 8 routing calls
 - [x] QA-5's findings ruled; Critical and Important fixed and re-reviewed
-- [ ] CI green on `next`; merged into `main`; tagged `v2.1.0`
+- [x] CI green on `next` (run 44413920184); merged into `main`; tagged `v2.1.0`
 
 ## Result
 
