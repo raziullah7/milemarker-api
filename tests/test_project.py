@@ -161,6 +161,7 @@ print(json.dumps({
     "ALLOWED_HOSTS": s.ALLOWED_HOSTS,
     "NUM_PROXIES": s.REST_FRAMEWORK["NUM_PROXIES"],
     "DATABASE": [db["ENGINE"], db["HOST"], db["PORT"], db["NAME"], db["USER"]],
+    "DATABASE_OPTIONS": db.get("OPTIONS"),
     "CACHES": s.CACHES,
 }))
 """
@@ -219,10 +220,16 @@ def test_cf05_proxies_trusted():
 
 
 def test_cf06_default_database():
-    engine, host, port, name, user = settings_with()["DATABASE"]
+    default = settings_with()
+    engine, host, port, name, user = default["DATABASE"]
 
     assert engine == "django.db.backends.postgresql"
     assert (host, port, name, user) == ("127.0.0.1", 5432, "milemarker", "milemarker")
+    # Phase 15, M5: a database that does not answer is given up on after 5 seconds. A
+    # connect_timeout in DATABASE_URL wins.
+    assert default["DATABASE_OPTIONS"] == {"connect_timeout": 5}
+    url = "postgresql://milemarker:milemarker@127.0.0.1:5432/milemarker?connect_timeout=2"
+    assert settings_with(DATABASE_URL=url)["DATABASE_OPTIONS"] == {"connect_timeout": 2}
 
 
 def test_cf07_redis_url_selects_the_cache():

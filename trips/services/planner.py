@@ -19,11 +19,11 @@ from django.core.cache import cache
 from django.db import DatabaseError, connection
 
 from config.cache import cache_state
-from stations.exceptions import StationsNotLoaded
+from stations.exceptions import MileMarkerError, StationsNotLoaded
 from stations.index import fingerprint, get_index, nearest_station
 from stations.places import Place, resolve
 from stations.types import StationIndex
-from trips.exceptions import InvalidRequest, RouteLeavesUSA
+from trips.exceptions import InvalidRequest, NoRoute, RouteLeavesUSA
 from trips.services import routing
 from trips.services.answer import Stop, build_answer
 from trips.services.corridor import (
@@ -54,6 +54,20 @@ class _Road:
     points: RoadPoints
     distance_miles: float  # the routing service's length, rounded to 0.1 mile
     server: str  # host name of the routing server that supplied it
+
+
+@dataclass(frozen=True)
+class _Refused:
+    """What the road cache holds, in place of a road, for a trip refused once the routing
+    service has answered: no road, a road under half a mile, or one that leaves the USA.
+
+    Plain data, not the error itself: an error whose constructor takes keyword-only
+    arguments does not unpickle reliably. _refusal() builds the error from it.
+    """
+
+    kind: str  # the error's code
+    message: str
+    miles_abroad: float | None = None  # route_leaves_usa only, unrounded: the error rounds it
 
 
 @dataclass(frozen=True)
@@ -110,13 +124,20 @@ def plan_trip(start_text: str, finish_text: str, stop_cost: Decimal) -> dict:
     # 5. The station nearest the start, where the first fill-up is priced.
     start_station, first_fill_miles = nearest_station(index, start.lat, start.lng)
 
-    # 6. The road: from the cache, or from one routing call.
+    # 6. The road: from the cache, or from one routing call. A refusal is cached in the
+    # road's place, so a repeat is refused the same way with no routing call. A routing
+    # failure is raised from _fetch_road, so it is never cached.
     road_key = f"road:{trip_key}"
     road = cache.get(road_key)
     routing_calls, routing_seconds = 0, 0.0
     if road is None:
-        road, routing_calls, routing_seconds = _fetch_road(start, finish)
+        try:
+            road, routing_calls, routing_seconds = _fetch_road(start, finish)
+        except NoRoute as error:
+            road = _Refused(NoRoute.code, error.message)
         cache.set(road_key, road, settings.TRIP_CACHE_SECONDS)
+    if isinstance(road, _Refused):
+        raise _refusal(road)
 
     # 7. Stations along the road.
     along = stations_along(
@@ -166,7 +187,7 @@ def health() -> dict:
     where its cache is ("memory", "redis" or "fallback", architecture section 11).
 
     Asking loads the index if it is not loaded yet, as a trip does. Raises
-    StationsNotLoaded if the table is empty.
+    StationsNotLoaded if the table is empty or the database cannot be reached.
     """
     return {"status": "ok", "stations": len(get_index()), "cache": cache_state()}
 
@@ -178,7 +199,7 @@ def warm_up() -> None:
     (config/wsgi.py).
 
     The server may start before load_stations has run, or before the database is up. Then
-    one line is logged and nothing is raised: the first request that needs the stations
+    a warning is logged and nothing is raised: the first request that needs the stations
     reads them, as it would have without this.
     """
     resolve("New York, NY", "start")  # any lookup reads the places table, once
@@ -203,10 +224,11 @@ def _spot(place: Place) -> str:
     return f"{place.lat:.4f},{place.lng:.4f}"
 
 
-def _fetch_road(start: Place, finish: Place) -> tuple[_Road, int, float]:
-    """One routing call, then the checks a road must pass before it may be cached.
+def _fetch_road(start: Place, finish: Place) -> tuple[_Road | _Refused, int, float]:
+    """One routing call, then the checks a road must pass.
 
-    Returns (the road, routing calls made, seconds spent inside the routing call).
+    Returns (the road, or a _Refused if it fails a check; routing calls made; seconds spent
+    inside the routing call).
     """
     before = time.perf_counter()
     route = routing.fetch_route((start.lat, start.lng), (finish.lat, finish.lng))
@@ -214,17 +236,29 @@ def _fetch_road(start: Place, finish: Place) -> tuple[_Road, int, float]:
 
     distance_miles = round(route.distance_miles, 1)
     if distance_miles < SHORTEST_TRIP_MILES:
-        raise InvalidRequest(SAME_PLACE, fields={"finish": [SAME_PLACE]})
+        return _Refused(InvalidRequest.code, SAME_PLACE), route.calls, routing_seconds
 
     points = resample(route.coords, distance_miles)
     miles_abroad = longest_run_abroad(points, _borders())
     if miles_abroad > MOST_MILES_ABROAD:
-        raise RouteLeavesUSA(
+        message = (
             f"The road runs through Canada or Mexico for {miles_abroad:.0f} miles in a row. "
-            "Only trips that stay in the USA are planned.",
-            miles_abroad=miles_abroad,
+            "Only trips that stay in the USA are planned."
         )
+        refused = _Refused(RouteLeavesUSA.code, message, miles_abroad)
+        return refused, route.calls, routing_seconds
     return _Road(points, distance_miles, route.server), route.calls, routing_seconds
+
+
+def _refusal(refused: _Refused) -> MileMarkerError:
+    """The error a refused trip raises: built the same way from a new refusal and from a
+    cached one, so the two answers are identical."""
+    if refused.kind == NoRoute.code:
+        return NoRoute(refused.message)
+    if refused.kind == InvalidRequest.code:
+        return InvalidRequest(refused.message, fields={"finish": [refused.message]})
+    assert refused.miles_abroad is not None  # route_leaves_usa always carries it
+    return RouteLeavesUSA(refused.message, miles_abroad=refused.miles_abroad)
 
 
 @functools.cache

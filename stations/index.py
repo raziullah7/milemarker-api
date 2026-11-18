@@ -5,7 +5,10 @@ do: they search the arrays held here.
 """
 
 import hashlib
+import logging
 import threading
+
+from django.db import DatabaseError
 
 from stations.exceptions import StationsNotLoaded
 from stations.models import FuelStation
@@ -14,6 +17,8 @@ from stations.types import StationIndex, StationInfo, build_index
 
 # Distances this close are treated as equal, so stations in one city count as a tie.
 TIE_MILES = 0.01
+
+logger = logging.getLogger(__name__)
 
 _index: StationIndex | None = None
 # A worker answers requests on several threads. Without the lock, two first requests at
@@ -30,8 +35,9 @@ def get_index() -> StationIndex:
     Rows are read in station-ID order. The result is remembered for the life of the
     process, so later calls make no query. Threads asking at once wait for one read.
 
-    Raises StationsNotLoaded if the table is empty. An empty table is never
-    remembered: once load_stations has run, the next call succeeds without a restart.
+    Raises StationsNotLoaded if the table is empty, or if the database cannot be reached.
+    Neither is remembered: once load_stations has run, or the database answers, the next
+    call succeeds without a restart.
     """
     global _index
     if _index is not None:
@@ -39,21 +45,28 @@ def get_index() -> StationIndex:
     with _index_lock:
         if _index is not None:  # another thread read it while this one waited
             return _index
-        stations = [
-            (
-                StationInfo(
-                    opis_id=row.opis_id,
-                    name=row.name,
-                    address=row.address,
-                    city=row.city,
-                    state=row.state,
-                    price=row.price,
-                ),
-                row.lat,
-                row.lng,
-            )
-            for row in FuelStation.objects.order_by("opis_id")
-        ]
+        try:
+            stations = [
+                (
+                    StationInfo(
+                        opis_id=row.opis_id,
+                        name=row.name,
+                        address=row.address,
+                        city=row.city,
+                        state=row.state,
+                        price=row.price,
+                    ),
+                    row.lat,
+                    row.lng,
+                )
+                for row in FuelStation.objects.order_by("opis_id")
+            ]
+        except DatabaseError as error:
+            # One line, not a traceback: the fault is outside this code.
+            logger.warning("The stations could not be read (%s).", type(error).__name__)
+            raise StationsNotLoaded(
+                "The fuel stations could not be read from the database. Try again later."
+            ) from error
         if not stations:
             raise StationsNotLoaded(
                 "No fuel stations are loaded. Run: python manage.py load_stations"

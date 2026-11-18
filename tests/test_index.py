@@ -1,14 +1,17 @@
-"""Cases LD-13 to LD-18: the in-memory station index, loaded from PostgreSQL."""
+"""Cases LD-13 to LD-19: the in-memory station index, loaded from PostgreSQL."""
 
+import logging
 from decimal import Decimal
 from io import StringIO
 
 import pytest
 from django.core.management import call_command
+from django.db import OperationalError
 
-from stations import places
+from stations import index, places
 from stations.exceptions import StationsNotLoaded
 from stations.index import get_index, nearest_station, reset_index
+from stations.models import FuelStation
 from stations.places import resolve
 from tests.conftest import SMALL_CSV
 
@@ -35,6 +38,12 @@ def small_csv_plus(tmp_path, extra_row: str):
     return path
 
 
+def unreachable(*fields: str):
+    """Stands in for the station query, FuelStation.objects.order_by, when the database
+    cannot be reached."""
+    raise OperationalError("connection refused")
+
+
 def test_ld13_index_is_in_station_id_order_with_exact_prices():
     load(SMALL_CSV)
     index = get_index()
@@ -59,6 +68,25 @@ def test_ld15_empty_table_is_not_remembered():
     with pytest.raises(StationsNotLoaded):
         get_index()
     load(SMALL_CSV)
+    assert len(get_index()) == 4
+
+
+def test_ld19_a_database_that_cannot_be_reached_is_stations_not_loaded(monkeypatch, caplog):
+    """Phase 15, M5: the database's error becomes StationsNotLoaded, logged as one warning
+    line that names it, with no traceback. Nothing is remembered: once the database answers,
+    the next call reads the stations."""
+    load(SMALL_CSV)
+    with monkeypatch.context() as patch, caplog.at_level(logging.WARNING):
+        patch.setattr(FuelStation.objects, "order_by", unreachable)
+        with pytest.raises(StationsNotLoaded) as caught:
+            get_index()
+
+    assert "could not be read from the database" in caught.value.message
+    assert isinstance(caught.value.__cause__, OperationalError)
+    [record] = [r for r in caplog.records if r.name == index.__name__]
+    assert record.levelno == logging.WARNING
+    assert "OperationalError" in record.getMessage()
+    assert record.exc_info is None
     assert len(get_index()) == 4
 
 

@@ -1,9 +1,9 @@
-"""The endpoint, GET /api/v1/route/: cases EP-01 to EP-40 and S04 of docs/test-cases.md.
+"""The endpoint, GET /api/v1/route/: cases EP-01 to EP-44 and S04 of docs/test-cases.md.
 
 The Django test client calls the real address, and PostgreSQL holds the stations each case
 creates. The routing call is always replaced: by a fake fetch_route for most cases, and by
 a fake transport under the real fetch_route where the retry between the two servers
-matters (EP-08, EP-24, EP-28 to EP-30, S04).
+matters (EP-08, EP-24, EP-28 to EP-30, EP-42, S04).
 """
 
 import json
@@ -28,6 +28,7 @@ from stations.index import reset_index
 from stations.models import FuelStation
 from stations.places import Place
 from tests.conftest import METRES_PER_MILE, SMALL_CSV, load_road
+from tests.test_index import unreachable
 from tests.test_routing import ZERO_LENGTH_ANSWER, Fake, slow, timeout
 from tests.verify import Listing, places_from, verify_response
 from trips import errors
@@ -758,6 +759,67 @@ def test_ep40_timings(client, ep01):
     assert meta["timings_ms"]["routing"] == 0
 
 
+# --- EP-41 to EP-44: refusals come from the cache; a database that cannot be reached ------
+
+
+def refused_twice(client, params: dict, code: str) -> None:
+    """Send `params` twice. Both are refused with `code`, and the second answer, from the
+    cache, has the first's status and exactly its bytes."""
+    first, second = client.get(URL, params), client.get(URL, params)
+
+    assert_error(first, code)
+    assert (second.status_code, second.content) == (first.status_code, first.content)
+
+
+def test_ep41_a_road_that_leaves_the_usa_is_refused_from_the_cache(
+    client, ep01_stations, use_road, monkeypatch
+):
+    """Phase 15, I2. Until then each repeat called the routing service again. The refusal
+    is kept as long as a road is."""
+    fake = use_road(*load_road("det_buf"))
+    detroit_to_buffalo = {"start": "Detroit, MI", "finish": "Buffalo, NY"}
+    refused_twice(client, detroit_to_buffalo, "route_leaves_usa")
+    assert fake.calls == 1
+
+    move_clock(monkeypatch, 23 * 3600 + 59 * 60)
+    assert_error(client.get(URL, detroit_to_buffalo), "route_leaves_usa")
+    assert fake.calls == 1
+
+    move_clock(monkeypatch, 24 * 3600 + 1)
+    assert_error(client.get(URL, detroit_to_buffalo), "route_leaves_usa")
+    assert fake.calls == 2
+
+
+def test_ep42_no_road_is_refused_from_the_cache(client, ep01_stations, use_servers):
+    fake = use_servers(Fake(httpx.Response(400, json={"code": "NoRoute"}), None))
+    refused_twice(client, TRIP, "no_route")
+
+    assert len(fake.requests) == 1
+
+
+def test_ep43_a_road_under_half_a_mile_is_refused_from_the_cache(client, ep01_stations, use_road):
+    fake = use_road(*straight_road(0.4))
+    refused_twice(client, {"start": "Dallas, TX", "finish": "Fort Worth, TX"}, "invalid_request")
+
+    assert fake.calls == 1
+
+
+def test_ep44_a_database_that_cannot_be_reached_is_503_until_it_answers(
+    client, ep01, monkeypatch, caplog
+):
+    """Phase 15, M5: 503 stations_not_loaded and no traceback, not 500 internal_error; the
+    routing service is not called. With no restart, the trip is planned once the database
+    answers."""
+    with monkeypatch.context() as patch, caplog.at_level(logging.WARNING):
+        patch.setattr(FuelStation.objects, "order_by", unreachable)
+        assert assert_error(client.get(URL, TRIP), "stations_not_loaded") == {}
+
+    assert not [r for r in caplog.records if r.exc_info]
+    assert ep01.calls == 0
+    plan(client)
+    assert ep01.calls == 1
+
+
 # --- S04 and the brief's own requirements ----------------------------------------------
 
 
@@ -773,15 +835,6 @@ def test_s04_both_servers_too_slow(client, ep01_stations, use_servers, settings)
     assert assert_error(response, "routing_unavailable") == {"reason": "timeout"}
     assert len(fake.requests) == 2
     assert elapsed < 1.0
-
-
-def test_a_road_that_leaves_the_usa_is_not_cached(client, ep01_stations, use_road):
-    fake = use_road(*load_road("det_buf"))
-    detroit_to_buffalo = {"start": "Detroit, MI", "finish": "Buffalo, NY"}
-    for _ in range(2):
-        assert_error(client.get(URL, detroit_to_buffalo), "route_leaves_usa")
-
-    assert fake.calls == 2
 
 
 def test_routing_server_is_remembered_with_the_road_and_the_answer(

@@ -1,6 +1,6 @@
-"""The health address, GET /api/v1/health/: cases HS-01, HS-02, HS-06 to HS-08 and the health
-part of HS-10 of docs/test-cases.md, section 9.4; and QB-17 of section 9.13, the lock around
-reading the station index, which health and the route share. HS-03 to HS-05, health on
+"""The health address, GET /api/v1/health/: cases HS-01, HS-02, HS-06 to HS-08, the health
+part of HS-10 and HS-22 of docs/test-cases.md, section 9.4; and QB-17 of section 9.13, the lock
+around reading the station index, which health and the route share. HS-03 to HS-05, health on
 Redis, are in tests/test_cache.py.
 
 The cache is the in-memory one (REDIS_URL unset), and the stations come from PostgreSQL.
@@ -17,8 +17,10 @@ from django.db import connection
 
 from stations import index
 from stations.index import get_index, reset_index
+from stations.models import FuelStation
 from tests.conftest import SMALL_CSV
 from tests.test_api import URL, assert_error
+from tests.test_index import unreachable
 
 HEALTH = "/api/v1/health/"
 ROUTING_FREE = {"start": "Dallas, TX"}
@@ -87,6 +89,20 @@ def test_hs08_health_is_never_rate_limited(client):
 @pytest.mark.django_db
 def test_hs10_health_answers_only_get(client):
     assert assert_error(client.post(HEALTH), "method_not_allowed") == {}
+
+
+@pytest.mark.django_db
+def test_hs22_a_database_that_cannot_be_reached_is_503_until_it_answers(client, monkeypatch):
+    """Phase 15, M5: 503 stations_not_loaded, not 500 internal_error; then, with no restart,
+    200 once the database answers."""
+    load_small_csv()
+    with monkeypatch.context() as patch:
+        patch.setattr(FuelStation.objects, "order_by", unreachable)
+        assert assert_error(client.get(HEALTH), "stations_not_loaded") == {}
+
+    response = client.get(HEALTH)
+    assert response.status_code == 200
+    assert json.loads(response.content)["stations"] == 4
 
 
 @pytest.mark.django_db(transaction=True)

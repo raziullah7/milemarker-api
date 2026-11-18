@@ -111,6 +111,10 @@ DATABASES = {
         conn_health_checks=True,
     )
 }
+# A database that does not answer is given up on after 5 seconds, and the request is answered
+# 503 stations_not_loaded. Without it the driver can wait far longer. A connect_timeout in
+# DATABASE_URL wins.
+DATABASES["default"]["OPTIONS"] = {"connect_timeout": 5} | DATABASES["default"].get("OPTIONS", {})
 
 # --- Cache ----------------------------------------------------------------------------
 
@@ -119,7 +123,7 @@ TRIP_CACHE_SECONDS = 24 * 60 * 60
 # Part of every cache key (the cache's VERSION). A cached value can outlive the code that
 # made it, in Redis, so raise this by hand whenever the shape of a cached value or a
 # planning rule changes: entries made under the old number are then never read.
-CACHE_KEY_VERSION = 1
+CACHE_KEY_VERSION = 2
 
 # With REDIS_URL set, the two caches and the rate-limit counters are in Redis, shared by
 # every worker, with each process's own memory as the fallback (config/cache.py). Without
