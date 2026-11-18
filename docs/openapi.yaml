@@ -1,0 +1,1264 @@
+openapi: 3.0.3
+info:
+  title: Mile Marker API
+  version: 2.0.0
+  description: |-
+    Plans the fuel stops of a truck trip between two places in the lower 48 states and DC, and prices them from a table of listed station prices. The truck goes 500 miles on a full 50-gallon tank, at 10 miles per gallon, and leaves with an empty tank.
+
+    **Addresses.** `GET /api/v1/route/` plans a trip. `GET /api/v1/health/` says whether the stations are loaded. `GET /api/v1/schema/` is this document, as YAML, or as JSON for `Accept: application/vnd.oai.openapi+json`. `GET /api/v1/docs/` is the page that shows it. The route, the schema and the docs share one limit of 60 requests a minute for each client; the 61st is answered `429 rate_limited` with a `Retry-After` header. Health is never limited.
+
+    **Errors.** Every error, whatever raised it, has one body: `{"error": {"code": "...", "message": "...", "details": {...}}}`. The route lists the statuses it can answer with and the codes each carries. Two codes belong to every address and are not listed on the route. `not_found` (404): there is nothing at the address, whatever the method. `method_not_allowed` (405): the address exists and the method is not GET (HEAD and OPTIONS are left to the framework). Both have empty `details`.
+
+    **Request ID.** Every answer carries an `X-Request-ID` header, the same ID the server writes on its log lines for the request. A request that arrives with a well-formed `X-Request-ID` keeps it.
+
+    **Numbers.** Every number is a JSON number. Unknown query parameters are ignored.
+paths:
+  /api/v1/health/:
+    get:
+      operationId: health
+      description: Says whether the stations are loaded and where the answering worker's
+        cache is. Never rate limited.
+      summary: Check that the API is ready
+      tags:
+      - health
+      responses:
+        '200':
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+              description: The request's ID, as written on the server's log lines
+                for it. A well-formed ID sent with the request is kept.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              examples:
+                Ready:
+                  value:
+                    status: ok
+                    stations: 6626
+                    cache: redis
+                  summary: ready
+          description: The stations are loaded.
+        '503':
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+              description: The request's ID, as written on the server's log lines
+                for it. A well-formed ID sent with the request is kept.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error503Health'
+              examples:
+                NotLoaded:
+                  value:
+                    error:
+                      code: stations_not_loaded
+                      message: 'No fuel stations are loaded. Run: python manage.py
+                        load_stations'
+                      details: {}
+                  summary: not_loaded
+          description: No stations are loaded.
+  /api/v1/route/:
+    get:
+      operationId: planRoute
+      description: Finds the road between two places, the fuel stations along it,
+        and the cheapest way to buy the fuel the trip needs, with the truck's 500-mile
+        range and a stop cost charged while the plan is chosen. Planning reads data
+        and changes nothing, so the request can be repeated, or tried from a browser's
+        address bar. Finished answers are cached for 24 hours.
+      summary: Plan the fuel stops of a trip
+      parameters:
+      - in: query
+        name: finish
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 100
+        description: Where the trip ends, written as `start` is. It must not be the
+          same place as `start`.
+        required: true
+        examples:
+          City:
+            value: Los Angeles, CA
+            summary: city
+      - in: query
+        name: start
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 100
+        description: 'Where the trip starts, as a city and state: `Dallas, TX`, `Dallas
+          TX` or `Dallas, Texas`. Spaces at either end are removed; it cannot be blank.'
+        required: true
+        examples:
+          City:
+            value: New York, NY
+            summary: city
+      - in: query
+        name: stop_cost
+        schema:
+          type: number
+          minimum: 0
+          maximum: 100
+          default: 10
+        description: 'What one stop costs, in dollars, while the plan is chosen: a
+          dearer stop means fewer, longer fills. 0 to 100, at most 2 decimals, 10
+          when left out. Sent empty it is an error, not the default. Never added to
+          the fuel bill.'
+      tags:
+      - route
+      responses:
+        '200':
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+              description: The request's ID, as written on the server's log lines
+                for it. A well-formed ID sent with the request is kept.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteAnswer'
+              examples:
+                ChicagoToHouston:
+                  value:
+                    summary:
+                      start:
+                        label: Chicago, IL
+                        lat: 41.88585
+                        lng: -87.61812
+                      finish:
+                        label: Houston, TX
+                        lat: 29.7652
+                        lng: -95.3657
+                      distance_miles: 1086.9
+                      gallons: 108.69
+                      total_fuel_cost: 331.24
+                      stops: 3
+                      lowest_possible_fuel_cost: 319.62
+                      lowest_possible_stops: 11
+                      first_fill_distance_miles: 0.0
+                    warnings: []
+                    assumptions:
+                      range_miles: 500
+                      miles_per_gallon: 10
+                      tank_gallons: 50
+                      starting_fuel_gallons: 0
+                      stop_cost: 10.0
+                      search_radius_miles: 5
+                    fuel_stops:
+                    - order: 1
+                      kind: start
+                      station_id: 73127
+                      name: Gas N Wash
+                      address: I-55, EXIT 285
+                      city: Chicago
+                      state: IL
+                      mile_marker: 0.0
+                      lat: 41.88585
+                      lng: -87.61812
+                      price_per_gallon: 3.399
+                      gallons: 31.83
+                      cost: 108.19
+                    - order: 2
+                      kind: station
+                      station_id: 69861
+                      name: 'HUCKS FOOD & FUEL #379'
+                      address: I-57, EXIT 53
+                      city: Marion
+                      state: IL
+                      mile_marker: 318.3
+                      lat: 37.72464
+                      lng: -88.9587
+                      price_per_gallon: 2.929
+                      gallons: 47.81
+                      cost: 140.04
+                    - order: 3
+                      kind: station
+                      station_id: 72594
+                      name: 'Quiktrip #7900'
+                      address: I-30 & FM-989
+                      city: Texarkana
+                      state: TX
+                      mile_marker: 796.4
+                      lat: 33.40872
+                      lng: -94.09757
+                      price_per_gallon: 2.85733333
+                      gallons: 29.05
+                      cost: 83.01
+                    map:
+                      type: FeatureCollection
+                      features:
+                      - type: Feature
+                        properties:
+                          kind: route
+                          distance_miles: 1086.9
+                        geometry:
+                          type: LineString
+                          coordinates:
+                          - - -87.61799
+                            - 41.88551
+                          - - -88.30519
+                            - 40.11785
+                          - - -88.95011
+                            - 38.37442
+                          - - -89.53853
+                            - 36.66324
+                          - - -90.52452
+                            - 35.12698
+                          - - -92.67832
+                            - 34.53061
+                          - - -94.1551
+                            - 33.15016
+                          - - -94.72653
+                            - 31.46724
+                          - - -95.36593
+                            - 29.76526
+                      - type: Feature
+                        properties:
+                          kind: stop
+                          order: 1
+                          title: 1. Gas N Wash, Chicago IL
+                          name: Gas N Wash
+                          mile_marker: 0.0
+                          price_per_gallon: 3.399
+                          gallons: 31.83
+                          cost: 108.19
+                          marker-color: '#d9480f'
+                        geometry:
+                          type: Point
+                          coordinates:
+                          - -87.61812
+                          - 41.88585
+                      - type: Feature
+                        properties:
+                          kind: stop
+                          order: 2
+                          title: '2. HUCKS FOOD & FUEL #379, Marion IL'
+                          name: 'HUCKS FOOD & FUEL #379'
+                          mile_marker: 318.3
+                          price_per_gallon: 2.929
+                          gallons: 47.81
+                          cost: 140.04
+                          marker-color: '#d9480f'
+                        geometry:
+                          type: Point
+                          coordinates:
+                          - -88.9587
+                          - 37.72464
+                      - type: Feature
+                        properties:
+                          kind: stop
+                          order: 3
+                          title: '3. Quiktrip #7900, Texarkana TX'
+                          name: 'Quiktrip #7900'
+                          mile_marker: 796.4
+                          price_per_gallon: 2.85733333
+                          gallons: 29.05
+                          cost: 83.01
+                          marker-color: '#d9480f'
+                        geometry:
+                          type: Point
+                          coordinates:
+                          - -94.09757
+                          - 33.40872
+                      - type: Feature
+                        properties:
+                          kind: start
+                          title: 'Start: Chicago, IL'
+                          marker-color: '#2b8a3e'
+                        geometry:
+                          type: Point
+                          coordinates:
+                          - -87.61812
+                          - 41.88585
+                      - type: Feature
+                        properties:
+                          kind: finish
+                          title: 'Finish: Houston, TX'
+                          marker-color: '#1864ab'
+                        geometry:
+                          type: Point
+                          coordinates:
+                          - -95.3657
+                          - 29.7652
+                    meta:
+                      routing_calls: 1
+                      cache_hit: false
+                      routing_server: router.project-osrm.org
+                      timings_ms:
+                        routing: 9.0
+                        own: 37.7
+                        total: 46.7
+                  summary: Chicago, IL to Houston, TX (the route line shortened)
+          description: 'The plan: small parts first and the map last.'
+        '400':
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+              description: The request's ID, as written on the server's log lines
+                for it. A well-formed ID sent with the request is kept.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error400'
+              examples:
+                MissingParameter:
+                  value:
+                    error:
+                      code: invalid_request
+                      message: 'These parameters are missing or not valid: start.'
+                      details:
+                        fields:
+                          start:
+                          - This field is required.
+                  summary: A parameter is missing
+                SamePlace:
+                  value:
+                    error:
+                      code: invalid_request
+                      message: Start and finish are the same place.
+                      details:
+                        fields:
+                          finish:
+                          - Start and finish are the same place.
+                  summary: Start and finish are the same place
+                UnknownPlace:
+                  value:
+                    error:
+                      code: unknown_place
+                      message: Could not find 'Chicgo, IL'. Try a city and state,
+                        such as 'Dallas, TX'.
+                      details:
+                        field: start
+                        query: Chicgo, IL
+                        suggestions:
+                        - Chicago, IL
+                        - Cisco, IL
+                        - West Chicago, IL
+                        - North Chicago, IL
+                        - Cicero, IL
+                  summary: A place is not in the table
+          description: The request cannot be used. `invalid_request` or `unknown_place`.
+        '422':
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+              description: The request's ID, as written on the server's log lines
+                for it. A well-formed ID sent with the request is kept.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error422'
+              examples:
+                OutsideCoverage:
+                  value:
+                    error:
+                      code: outside_coverage
+                      message: '''Honolulu, HI'' is outside the area covered (the
+                        lower 48 states and DC).'
+                      details:
+                        field: start
+                        query: Honolulu, HI
+                  summary: A place is outside the area
+                RouteLeavesUsa:
+                  value:
+                    error:
+                      code: route_leaves_usa
+                      message: The road runs through Canada or Mexico for 252 miles
+                        in a row. Only trips that stay in the USA are planned.
+                      details:
+                        miles_abroad: 252.0
+                  summary: The road runs through Canada
+                NoRoute:
+                  value:
+                    error:
+                      code: no_route
+                      message: No road joins the start and the finish.
+                      details: {}
+                  summary: The routing service finds no road
+                NoFuelPlan:
+                  value:
+                    error:
+                      code: no_fuel_plan
+                      message: No fuel station is listed for 885.3 miles from mile
+                        0.0, more than the truck's range of 500 miles.
+                      details:
+                        gap_start_mile: 0.0
+                        gap_miles: 885.3
+                  summary: A stretch is longer than the range
+          description: The request is well formed but no plan can be made.
+        '429':
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+              description: The request's ID, as written on the server's log lines
+                for it. A well-formed ID sent with the request is kept.
+            Retry-After:
+              schema:
+                type: integer
+              description: Whole seconds to wait before asking again.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error429'
+              examples:
+                RateLimited:
+                  value:
+                    error:
+                      code: rate_limited
+                      message: Too many requests. Try again in 60 seconds.
+                      details:
+                        retry_after_seconds: 60
+                  summary: The 61st request in a minute
+          description: 'Too many requests from one client: 60 a minute.'
+        '500':
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+              description: The request's ID, as written on the server's log lines
+                for it. A well-formed ID sent with the request is kept.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error500'
+              examples:
+                InternalError:
+                  value:
+                    error:
+                      code: internal_error
+                      message: Something went wrong on our side. Please try again
+                        later.
+                      details: {}
+                  summary: An unexpected failure
+          description: An unexpected failure.
+        '502':
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+              description: The request's ID, as written on the server's log lines
+                for it. A well-formed ID sent with the request is kept.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error502'
+              examples:
+                RoutingUnavailable:
+                  value:
+                    error:
+                      code: routing_unavailable
+                      message: The routing service could not be reached.
+                      details:
+                        reason: timeout
+                  summary: Both routing servers timed out
+          description: The routing service could not give a road.
+        '503':
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+              description: The request's ID, as written on the server's log lines
+                for it. A well-formed ID sent with the request is kept.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error503'
+              examples:
+                StationsNotLoaded:
+                  value:
+                    error:
+                      code: stations_not_loaded
+                      message: 'No fuel stations are loaded. Run: python manage.py
+                        load_stations'
+                      details: {}
+                  summary: The station table is empty
+                ApiUnavailable:
+                  value:
+                    error:
+                      code: api_unavailable
+                      message: The API cannot be reached.
+                      details: {}
+                  summary: Sent by the proxy when the API cannot be reached
+          description: The API cannot answer. `stations_not_loaded` comes from the
+            API. `api_unavailable` is sent by the proxy in front of it when the API
+            cannot be reached or does not answer within 30 seconds.
+components:
+  schemas:
+    Assumptions:
+      type: object
+      properties:
+        range_miles:
+          type: integer
+          description: Miles a full tank travels.
+        miles_per_gallon:
+          type: integer
+          description: Miles the truck travels on a gallon.
+        tank_gallons:
+          type: integer
+          description: What a full tank holds, in gallons.
+        starting_fuel_gallons:
+          type: integer
+          description: 'Fuel in the tank when the trip starts: always 0, so the first
+            fill-up is at the start.'
+        stop_cost:
+          type: number
+          format: double
+          description: 'The cost in dollars charged per stop while the plan was chosen:
+            the request''s stop_cost, or 10.'
+        search_radius_miles:
+          type: integer
+          description: How many miles either side of the road stations are searched
+            for.
+      required:
+      - miles_per_gallon
+      - range_miles
+      - search_radius_miles
+      - starting_fuel_gallons
+      - stop_cost
+      - tank_gallons
+    EndpointFeature:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - Feature
+          description: GeoJSON type.
+        properties:
+          allOf:
+          - $ref: '#/components/schemas/EndpointProperties'
+          description: The place's properties.
+        geometry:
+          allOf:
+          - $ref: '#/components/schemas/_Point'
+          description: The place's position.
+      required:
+      - geometry
+      - properties
+      - type
+    EndpointProperties:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - start
+          - finish
+          description: Whether this feature is the start or the finish.
+        title:
+          type: string
+          description: 'A label such as `Start: Chicago, IL`.'
+        marker-color:
+          type: string
+          description: The marker's colour as a hex code, which geojson.io draws.
+      required:
+      - kind
+      - marker-color
+      - title
+    Error400:
+      type: object
+      properties:
+        error:
+          allOf:
+          - $ref: '#/components/schemas/Error400Content'
+          description: The error.
+      required:
+      - error
+    Error400Content:
+      type: object
+      properties:
+        code:
+          type: string
+          enum:
+          - invalid_request
+          - unknown_place
+          description: |-
+            `invalid_request`: a parameter is missing, empty or malformed, or start and finish are the same place. Also a host the API does not answer to, and a request that could not be read
+            `unknown_place`: a place is not in the table
+        message:
+          type: string
+          description: One plain sentence for a person.
+        details:
+          allOf:
+          - $ref: '#/components/schemas/Error400Details'
+          description: Extra facts, whose keys depend on the code; each key names
+            its code.
+      required:
+      - code
+      - details
+      - message
+    Error400Details:
+      type: object
+      properties:
+        fields:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          description: '`invalid_request`: the messages for each parameter. May be
+            empty, or absent, when the request was refused as a whole (a host that
+            is not allowed, a request that could not be read).'
+        field:
+          type: string
+          enum:
+          - start
+          - finish
+          description: '`unknown_place`: the parameter whose place was not found.'
+        query:
+          type: string
+          description: '`unknown_place`: the text as it was sent.'
+        suggestions:
+          type: array
+          items:
+            type: string
+          description: '`unknown_place`: up to 5 places such as `Chicago, IL`, possibly
+            none.'
+    Error422:
+      type: object
+      properties:
+        error:
+          allOf:
+          - $ref: '#/components/schemas/Error422Content'
+          description: The error.
+      required:
+      - error
+    Error422Content:
+      type: object
+      properties:
+        code:
+          type: string
+          enum:
+          - outside_coverage
+          - route_leaves_usa
+          - no_route
+          - no_fuel_plan
+          description: |-
+            `outside_coverage`: a place in Alaska, Hawaii, Puerto Rico, Canada or Mexico
+            `route_leaves_usa`: the road runs through Canada or Mexico for more than 25 miles in a row
+            `no_route`: the routing service finds no road between the points
+            `no_fuel_plan`: a stretch of more than 500 miles has no station listed
+        message:
+          type: string
+          description: One plain sentence for a person.
+        details:
+          allOf:
+          - $ref: '#/components/schemas/Error422Details'
+          description: Extra facts, whose keys depend on the code; each key names
+            its code.
+      required:
+      - code
+      - details
+      - message
+    Error422Details:
+      type: object
+      properties:
+        field:
+          type: string
+          enum:
+          - start
+          - finish
+          description: '`outside_coverage`: the parameter whose place is outside the
+            area.'
+        query:
+          type: string
+          description: '`outside_coverage`: the text as it was sent.'
+        miles_abroad:
+          type: number
+          format: double
+          description: '`route_leaves_usa`: miles of the longest unbroken stretch
+            outside the USA, 1 decimal.'
+        gap_start_mile:
+          type: number
+          format: double
+          description: '`no_fuel_plan`: the mile marker where the stretch without
+            a station begins, 1 decimal.'
+        gap_miles:
+          type: number
+          format: double
+          description: '`no_fuel_plan`: the length of that stretch in miles, 1 decimal.'
+    Error429:
+      type: object
+      properties:
+        error:
+          allOf:
+          - $ref: '#/components/schemas/Error429Content'
+          description: The error.
+      required:
+      - error
+    Error429Content:
+      type: object
+      properties:
+        code:
+          type: string
+          enum:
+          - rate_limited
+          description: '`rate_limited`: too many requests from one client'
+        message:
+          type: string
+          description: One plain sentence for a person.
+        details:
+          allOf:
+          - $ref: '#/components/schemas/Error429Details'
+          description: Extra facts, whose keys depend on the code; each key names
+            its code.
+      required:
+      - code
+      - details
+      - message
+    Error429Details:
+      type: object
+      properties:
+        retry_after_seconds:
+          type: integer
+          description: 'Whole seconds to wait: the same as the Retry-After header.'
+      required:
+      - retry_after_seconds
+    Error500:
+      type: object
+      properties:
+        error:
+          allOf:
+          - $ref: '#/components/schemas/Error500Content'
+          description: The error.
+      required:
+      - error
+    Error500Content:
+      type: object
+      properties:
+        code:
+          type: string
+          enum:
+          - internal_error
+          description: '`internal_error`: anything unexpected; no detail is given'
+        message:
+          type: string
+          description: One plain sentence for a person.
+        details:
+          type: object
+          maxProperties: 0
+          description: Always empty.
+      required:
+      - code
+      - details
+      - message
+    Error502:
+      type: object
+      properties:
+        error:
+          allOf:
+          - $ref: '#/components/schemas/Error502Content'
+          description: The error.
+      required:
+      - error
+    Error502Content:
+      type: object
+      properties:
+        code:
+          type: string
+          enum:
+          - routing_unavailable
+          description: '`routing_unavailable`: both routing servers failed or timed
+            out'
+        message:
+          type: string
+          description: One plain sentence for a person.
+        details:
+          allOf:
+          - $ref: '#/components/schemas/Error502Details'
+          description: Extra facts, whose keys depend on the code; each key names
+            its code.
+      required:
+      - code
+      - details
+      - message
+    Error502Details:
+      type: object
+      properties:
+        reason:
+          type: string
+          enum:
+          - timeout
+          - error
+          description: '`timeout` when every attempt timed out, `error` otherwise.'
+      required:
+      - reason
+    Error503:
+      type: object
+      properties:
+        error:
+          allOf:
+          - $ref: '#/components/schemas/Error503Content'
+          description: The error.
+      required:
+      - error
+    Error503Content:
+      type: object
+      properties:
+        code:
+          type: string
+          enum:
+          - stations_not_loaded
+          - api_unavailable
+          description: |-
+            `stations_not_loaded`: the station table is empty: `load_stations` has not been run
+            `api_unavailable`: sent by the proxy, not by the API, when the API cannot be reached or does not answer within 30 seconds
+        message:
+          type: string
+          description: One plain sentence for a person.
+        details:
+          type: object
+          maxProperties: 0
+          description: Always empty.
+      required:
+      - code
+      - details
+      - message
+    Error503Health:
+      type: object
+      properties:
+        error:
+          allOf:
+          - $ref: '#/components/schemas/Error503HealthContent'
+          description: The error.
+      required:
+      - error
+    Error503HealthContent:
+      type: object
+      properties:
+        code:
+          type: string
+          enum:
+          - stations_not_loaded
+          description: '`stations_not_loaded`: the station table is empty: `load_stations`
+            has not been run'
+        message:
+          type: string
+          description: One plain sentence for a person.
+        details:
+          type: object
+          maxProperties: 0
+          description: Always empty.
+      required:
+      - code
+      - details
+      - message
+    FuelStop:
+      type: object
+      properties:
+        order:
+          type: integer
+          description: Position in the trip, from 1.
+        kind:
+          type: string
+          enum:
+          - start
+          - station
+          description: '`start` for stop 1, the fuel bought before leaving, priced
+            at the listed station nearest the start. `station` for every other stop.'
+        station_id:
+          type: integer
+          description: The station's OPIS ID in the price table.
+        name:
+          type: string
+          description: The station's name.
+        address:
+          type: string
+          description: The station's address.
+        city:
+          type: string
+          description: The station's city.
+        state:
+          type: string
+          description: The station's state, two letters.
+        mile_marker:
+          type: number
+          format: double
+          description: Miles from the start along the road, 1 decimal. 0 for stop
+            1.
+        lat:
+          type: number
+          format: double
+          description: Latitude, 5 decimals. For stop 1 the start place's; for every
+            other stop the point where the road passes the station's city, so it sits
+            on the route line.
+        lng:
+          type: number
+          format: double
+          description: Longitude, 5 decimals, placed as `lat` is.
+        price_per_gallon:
+          type: number
+          format: double
+          description: Dollars per gallon, every digit the price table has.
+        gallons:
+          type: number
+          format: double
+          description: Gallons bought here, 2 decimals.
+        cost:
+          type: number
+          format: double
+          description: 'Dollars paid here: gallons times price, rounded to the cent.'
+      required:
+      - address
+      - city
+      - cost
+      - gallons
+      - kind
+      - lat
+      - lng
+      - mile_marker
+      - name
+      - order
+      - price_per_gallon
+      - state
+      - station_id
+    Health:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - ok
+          description: 'Always ok: when the stations are not loaded the answer is
+            a 503.'
+        stations:
+          type: integer
+          description: Stations in the index of the worker that answered.
+        cache:
+          type: string
+          enum:
+          - redis
+          - fallback
+          - memory
+          description: 'The cache of the worker that answered. `memory`: no REDIS_URL
+            is set, so it is the worker''s own memory. `redis`: it is using Redis.
+            `fallback`: REDIS_URL is set, but Redis could not be reached, so for 30
+            seconds the worker uses its own memory.'
+      required:
+      - cache
+      - stations
+      - status
+    Map:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - FeatureCollection
+          description: GeoJSON type.
+        features:
+          type: array
+          items:
+            $ref: '#/components/schemas/MapFeature'
+          description: 'In order: the route line, one point for each stop, the start,
+            the finish. Ready to paste into geojson.io.'
+      required:
+      - features
+      - type
+    MapFeature:
+      oneOf:
+      - $ref: '#/components/schemas/RouteFeature'
+      - $ref: '#/components/schemas/StopFeature'
+      - $ref: '#/components/schemas/EndpointFeature'
+    Meta:
+      type: object
+      properties:
+        routing_calls:
+          type: integer
+          description: 'Requests made to routing servers for this answer: 0 from the
+            cache, else 1 or 2.'
+        cache_hit:
+          type: boolean
+          description: Whether the finished answer came from the cache.
+        routing_server:
+          type: string
+          description: Host name of the routing server that supplied the road, now
+            or when it was cached.
+        timings_ms:
+          allOf:
+          - $ref: '#/components/schemas/Timings'
+          description: Where the time went, for this request.
+      required:
+      - cache_hit
+      - routing_calls
+      - routing_server
+      - timings_ms
+    Place:
+      type: object
+      properties:
+        label:
+          type: string
+          description: The place as the places table spells it.
+        lat:
+          type: number
+          format: double
+          description: Latitude, 5 decimals.
+        lng:
+          type: number
+          format: double
+          description: Longitude, 5 decimals.
+      required:
+      - label
+      - lat
+      - lng
+    RouteAnswer:
+      type: object
+      properties:
+        summary:
+          allOf:
+          - $ref: '#/components/schemas/Summary'
+          description: The trip in a few figures.
+        warnings:
+          type: array
+          items:
+            type: string
+          description: Plain sentences. One is added when the station of the first
+            fill-up is more than 25 miles from the start.
+        assumptions:
+          allOf:
+          - $ref: '#/components/schemas/Assumptions'
+          description: What the plan was made with.
+        fuel_stops:
+          type: array
+          items:
+            $ref: '#/components/schemas/FuelStop'
+          description: The plan, in driving order.
+        map:
+          allOf:
+          - $ref: '#/components/schemas/Map'
+          description: The route and its stops as a GeoJSON FeatureCollection.
+        meta:
+          allOf:
+          - $ref: '#/components/schemas/Meta'
+          description: 'How this answer was made. Not cached: built for every answer.'
+      required:
+      - assumptions
+      - fuel_stops
+      - map
+      - meta
+      - summary
+      - warnings
+    RouteFeature:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - Feature
+          description: GeoJSON type.
+        properties:
+          allOf:
+          - $ref: '#/components/schemas/RouteProperties'
+          description: The route line's properties.
+        geometry:
+          allOf:
+          - $ref: '#/components/schemas/_LineString'
+          description: The road.
+      required:
+      - geometry
+      - properties
+      - type
+    RouteProperties:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - route
+          description: This feature is the route line.
+        distance_miles:
+          type: number
+          format: double
+          description: 'Length of the road, in miles: the summary''s.'
+      required:
+      - distance_miles
+      - kind
+    StopFeature:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - Feature
+          description: GeoJSON type.
+        properties:
+          allOf:
+          - $ref: '#/components/schemas/StopProperties'
+          description: The stop's properties.
+        geometry:
+          allOf:
+          - $ref: '#/components/schemas/_Point'
+          description: 'Where the stop is drawn: the stop''s lat and lng.'
+      required:
+      - geometry
+      - properties
+      - type
+    StopProperties:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - stop
+          description: This feature is a fuel stop.
+        order:
+          type: integer
+          description: The stop's order, as in fuel_stops.
+        title:
+          type: string
+          description: 'A label such as `2. SHEETZ #639, Youngstown OH`, which geojson.io
+            shows.'
+        name:
+          type: string
+          description: The station's name.
+        mile_marker:
+          type: number
+          format: double
+          description: The stop's mile_marker.
+        price_per_gallon:
+          type: number
+          format: double
+          description: The stop's price_per_gallon.
+        gallons:
+          type: number
+          format: double
+          description: The stop's gallons.
+        cost:
+          type: number
+          format: double
+          description: The stop's cost.
+        marker-color:
+          type: string
+          description: The marker's colour as a hex code, which geojson.io draws.
+      required:
+      - cost
+      - gallons
+      - kind
+      - marker-color
+      - mile_marker
+      - name
+      - order
+      - price_per_gallon
+      - title
+    Summary:
+      type: object
+      properties:
+        start:
+          allOf:
+          - $ref: '#/components/schemas/Place'
+          description: The start place, as found.
+        finish:
+          allOf:
+          - $ref: '#/components/schemas/Place'
+          description: The finish place, as found.
+        distance_miles:
+          type: number
+          format: double
+          description: Length of the road, in miles, 1 decimal.
+        gallons:
+          type: number
+          format: double
+          description: 'Gallons bought in all: the distance divided by 10, 2 decimals.'
+        total_fuel_cost:
+          type: number
+          format: double
+          description: 'Dollars paid for the fuel, 2 decimals: the sum of the stops''
+            costs. The stop cost is never part of it.'
+        stops:
+          type: integer
+          description: Number of fuel stops, the start's fill-up included.
+        lowest_possible_fuel_cost:
+          type: number
+          format: double
+          description: Dollars the fuel would cost if stops were free (stop_cost 0).
+            Never more than total_fuel_cost.
+        lowest_possible_stops:
+          type: integer
+          description: Number of stops of that free-stops plan, counted as `stops`
+            is.
+        first_fill_distance_miles:
+          type: number
+          format: double
+          description: Miles from the start place to the listed station where the
+            first fill-up is priced.
+      required:
+      - distance_miles
+      - finish
+      - first_fill_distance_miles
+      - gallons
+      - lowest_possible_fuel_cost
+      - lowest_possible_stops
+      - start
+      - stops
+      - total_fuel_cost
+    Timings:
+      type: object
+      properties:
+        routing:
+          type: number
+          format: double
+          description: Milliseconds spent in the call to the routing service; 0 with
+            no call.
+        own:
+          type: number
+          format: double
+          description: Milliseconds of this API's own work, up to handing the answer
+            to the framework.
+        total:
+          type: number
+          format: double
+          description: 'Milliseconds in all: routing plus own.'
+      required:
+      - own
+      - routing
+      - total
+    _LineString:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - LineString
+          description: GeoJSON geometry type.
+        coordinates:
+          type: array
+          items:
+            type: array
+            items:
+              type: number
+              format: double
+            maxItems: 2
+            minItems: 2
+          description: The road as [longitude, latitude] points, 5 decimals, in driving
+            order.
+      required:
+      - coordinates
+      - type
+    _Point:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - Point
+          description: GeoJSON geometry type.
+        coordinates:
+          type: array
+          items:
+            type: number
+            format: double
+          description: '[longitude, latitude], 5 decimals.'
+          maxItems: 2
+          minItems: 2
+      required:
+      - coordinates
+      - type

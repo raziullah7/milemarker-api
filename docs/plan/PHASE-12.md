@@ -46,6 +46,8 @@ Two agents work at once on things that meet, so the meeting points are fixed her
 default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://tiles.openfreemap.org https://gibs.earthdata.nasa.gov; connect-src 'self' https://tiles.openfreemap.org https://gibs.earthdata.nasa.gov; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'
 ```
 
+**nginx's own error answers** use these messages, which the OpenAPI document already shows: `api_unavailable`, "The API cannot be reached."; the others in the wording the API uses for the same code.
+
 It follows that the viewer loads no script, style or font from another origin: fonts are bundled, and the map library's worker is one of the page's own files.
 
 ## Rulings

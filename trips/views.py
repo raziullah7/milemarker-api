@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from trips.errors import HOST_NOT_ALLOWED, INTERNAL_ERROR, MALFORMED_REQUEST, NOT_FOUND, json_error
+from trips.schema import health_schema, route_schema
 from trips.serializers import RouteQuery
 from trips.services.planner import health, plan_trip
 
@@ -41,6 +42,7 @@ class RouteView(APIView):
     # that setting while this module is still being imported, a circular import.
     content_negotiation_class = AlwaysJSON
 
+    @route_schema
     def get(self, request: Request) -> Response:
         """Check the parameters, plan the trip, answer with the plan."""
         # A plain dict, not the QueryDict: given a QueryDict, the framework reads an empty
@@ -60,6 +62,7 @@ class HealthView(APIView):
     # The one address that is never rate limited (FR-20).
     throttle_classes = ()
 
+    @health_schema
     def get(self, request: Request) -> Response:
         """200 with the count and the cache's state, or 503 stations_not_loaded."""
         return Response(health())

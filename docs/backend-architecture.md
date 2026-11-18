@@ -393,7 +393,7 @@ Small parts first, the map last, so the result is readable in Postman without sc
   },
   "fuel_stops": [
     {
-      "order": 1, "kind": "start", "station_id": "…", "name": "DELTA", "address": "…",
+      "order": 1, "kind": "start", "station_id": 73127, "name": "DELTA", "address": "…",
       "city": "Jersey City", "state": "NJ", "mile_marker": 0.0,
       "lat": 40.748, "lng": -73.997,
       "price_per_gallon": 3.239, "gallons": 39.15, "cost": 126.81
@@ -433,7 +433,7 @@ Every error has the same body, whatever raised it:
 
 | Status | Code | When | Details |
 |---|---|---|---|
-| 400 | `invalid_request` | A parameter is missing, empty or malformed, or start and finish are the same place. Also a host that is not allowed, and a request nginx refuses itself (below) | `fields`: the messages per parameter. Empty for a host that is not allowed and for a request nginx refuses |
+| 400 | `invalid_request` | A parameter is missing, empty or malformed, or start and finish are the same place. Also a host that is not allowed, and a request nginx refuses itself (below) | `fields`: the messages per parameter. `fields` is there but empty for a request Django would not read, such as one with more than 1,000 parameters. `details` itself is empty for a host that is not allowed and for a request nginx refuses |
 | 400 | `unknown_place` | A place is not in the table | `field`, `query`, `suggestions` (up to 5) |
 | 404 | `not_found` | No such address | — |
 | 405 | `method_not_allowed` | Anything but GET | — |

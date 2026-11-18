@@ -18,12 +18,14 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "jsonschema>=4.26.0",
     "mypy>=2.4.1",
     "pip-audit>=2.10.1",
     "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
     "pytest-django>=4.14.0",
     "pytest-socket>=0.8.1",
+    "pyyaml>=6.0.3",
     "ruff>=0.17.5",
 ]
 

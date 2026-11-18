@@ -32,6 +32,15 @@ Baseline: `PLAN.md`, Part 2, Phase 11. The riskiest change of Part 2, so it come
 - Ruling: the planner reads the station index before the answer cache, as 11K built it. Why: the answer's key carries the station fingerprint. The one visible difference, an empty station table answering `stations_not_loaded` even when another process cached the trip, is the more honest answer. Architecture section 2 is corrected to match.
 - Noted: 11K ran `git stash push` and `git stash pop` once, against its brief. The controller checked: the stash list is empty and the working tree holds exactly the files the report lists.
 
+### Rulings on 11S's report
+
+- Accepted: the schema and docs addresses use the library's views with one mixin of ours (`trips/schema.py`). Why: without it the library answers a 429 or a 405 on those two addresses as plain text or HTML, and an `Accept` header it cannot serve as 406, which our handler would turn into a 500. Both are tested.
+- Accepted: the library's enum post-processing is off, so each enum stays where it is declared. Why: with it on, the fields called `kind`, `type` and `code` raise collision warnings, and the document must validate with no warning.
+- Ruling: `jsonschema` and `pyyaml`, which the schema tests import, are declared in the dev group. Why: they were installed only because the OpenAPI library needs them; a test must not depend on another package's dependencies. The controller added them; no version changed in the lock file.
+- Ruling: Swagger UI stays pinned at 5.17.14. Why: the builder could not see the page; the controller opened `/api/v1/docs/` from the rebuilt image in a real browser and saw both operations drawn with no error. Not checked: whether a later release exists that fixes a known fault. Given to QA-3 in Phase 12, with the question of an integrity hash.
+- Corrected by the controller, where the code was right and the document was not: architecture section 11 showed `station_id` as text (it is an integer), and said nothing of the empty `fields` that a request Django will not read answers with; the settings' opening comment said the service has no templates.
+- Ruling: nginx's `api_unavailable` message is fixed now as "The API cannot be reached.", the wording the OpenAPI document shows, and written into `PHASE-12.md` for the builder of the front door.
+
 ## Gate 11 checklist
 
 - [ ] The controller has read every diff.

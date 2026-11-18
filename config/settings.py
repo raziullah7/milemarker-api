@@ -4,9 +4,9 @@ One file on purpose: every setting that differs between machines comes from an e
 variable (architecture document, section 18), and each has a default that works with the
 Compose file, so a fresh clone runs with no configuration at all. `.env.example` lists them.
 
-The service has no users, sessions, cookies, templates or admin site. That is why the app
-and middleware lists are short: Django REST Framework runs without the auth apps when it is
-told there is no user (see REST_FRAMEWORK below).
+The service has no users, sessions, cookies or admin site, and one template, the Swagger
+page's. That is why the app and middleware lists are short: Django REST Framework runs
+without the auth apps when it is told there is no user (see REST_FRAMEWORK below).
 """
 
 import os
@@ -49,6 +49,7 @@ ALLOWED_HOSTS = [
 
 INSTALLED_APPS = [
     "rest_framework",
+    "drf_spectacular",
     "stations",
     "trips",
 ]
@@ -68,6 +69,14 @@ MIDDLEWARE = [
 ]
 
 APPEND_SLASH = False
+
+# The Swagger page is the one template in the service (architecture section 11).
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "APP_DIRS": True,
+    }
+]
 
 # One value everywhere, nginx's included (architecture section 18).
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
@@ -148,6 +157,46 @@ REST_FRAMEWORK = {
     # client is its connection's address and X-Forwarded-For is ignored. Behind exactly
     # one proxy that overwrites the header, 1: the client is the address it wrote.
     "NUM_PROXIES": int(_text("DJANGO_NUM_PROXIES", "0")),
+    # Without a declaration the tool can guess nothing about a plain APIView (trips/schema.py).
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+# --- The OpenAPI document and the Swagger page ------------------------------------------
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Mile Marker API",
+    "DESCRIPTION": (
+        "Plans the fuel stops of a truck trip between two places in the lower 48 states and "
+        "DC, and prices them from a table of listed station prices. The truck goes 500 miles "
+        "on a full 50-gallon tank, at 10 miles per gallon, and leaves with an empty tank.\n\n"
+        "**Addresses.** `GET /api/v1/route/` plans a trip. `GET /api/v1/health/` says whether "
+        "the stations are loaded. `GET /api/v1/schema/` is this document, as YAML, or as JSON "
+        "for `Accept: application/vnd.oai.openapi+json`. `GET /api/v1/docs/` is the page that "
+        "shows it. The route, the schema and the docs share one limit of 60 requests a "
+        "minute for each client; the 61st is answered `429 rate_limited` with a "
+        "`Retry-After` header. Health is never limited.\n\n"
+        "**Errors.** Every error, whatever raised it, has one body: "
+        '`{"error": {"code": "...", "message": "...", "details": {...}}}`. The route lists '
+        "the statuses it can answer with and the codes each carries. Two codes belong to "
+        "every address and are not listed on the route. `not_found` (404): there is nothing "
+        "at the address, whatever the method. `method_not_allowed` (405): the address exists "
+        "and the method is not GET (HEAD and OPTIONS are left to the framework). Both have "
+        "empty `details`.\n\n"
+        "**Request ID.** Every answer carries an `X-Request-ID` header, the same ID the "
+        "server writes on its log lines for the request. A request that arrives with a "
+        "well-formed `X-Request-ID` keeps it.\n\n"
+        "**Numbers.** Every number is a JSON number. Unknown query parameters are ignored."
+    ),
+    "VERSION": "2.0.0",
+    # The document describes the API's trip and health addresses; the schema and docs
+    # addresses are described in its opening text, not listed in it.
+    "SERVE_INCLUDE_SCHEMA": False,
+    # The default hook lifts every enum into a component of its own and then warns that the
+    # fields called `kind`, `type` and `code` collide. Each enum stays where it is declared.
+    "POSTPROCESSING_HOOKS": [],
+    # One exact version, not the library's @latest: the page must not change under us.
+    "SWAGGER_UI_DIST": "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14",
+    "SWAGGER_UI_FAVICON_HREF": "",
 }
 
 # --- Routing service -------------------------------------------------------------------

@@ -3,7 +3,12 @@ that answers unknown addresses in the API's own error shape."""
 
 from django.urls import include, path
 
+from trips.schema import DocsView, SchemaView
+
 urlpatterns = [
+    # Before the include: the last pattern of trips.urls matches every address.
+    path("api/v1/schema/", SchemaView.as_view(), name="schema"),
+    path("api/v1/docs/", DocsView.as_view(url_name="schema"), name="docs"),
     path("", include("trips.urls")),
 ]
 
