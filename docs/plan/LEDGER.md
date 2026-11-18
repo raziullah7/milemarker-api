@@ -56,3 +56,4 @@ Repo: this repository (commit identity must be `Razi Ullah <50240668+raziullah7@
 - Phase 7 BASE: 19e983a
 - Phase 7 tasks 7R (README, architecture sections 4 and 14) and 7P (Postman collection) reviewed by the controller. Controller ran Newman: 14 requests, 111 assertions, 0 failed. Controller checked the map in geojson.io in a browser (reduced line). Live routing calls so far: about 91 of 100.
 - **Phase 7: complete (commit 7aecdc6).** Gate 7 passed.
+- Phase 8 started (controller only).
