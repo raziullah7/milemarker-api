@@ -54,12 +54,15 @@ It follows that the viewer loads no script, style or font from another origin: f
 
 ## Rulings
 
-- Ruling: the trial is the first part of the viewer builder's work, and the builder stops after it. The controller then opens the trial page in a real browser on this machine, looks at it, measures the frame rate, and decides globe or flat map before the build goes on. Why: a headless browser draws with software, so its frame rate says nothing; only a look on real graphics settles it. Cost if wrong: one round trip.
+- Ruling: the trial is the first part of the viewer builder's work, and the builder stops after it. The controller reads the trial's screenshots as images and decides globe or flat map before the build goes on. Why: the three risky things must be seen to draw before a night is spent on them. Changed on 19 Nov: the controller was to open the page on real graphics and measure the frame rate, but the build runs overnight with nobody at the screen, and the app's own browser does not draw while its window is hidden. So the frame rate on real graphics is judged in the morning, by the user and the controller together, and the flat map stays available until the cut line. Cost if wrong: the globe is built and then replaced, a few hours of the builder's work on the map module only; the panel, the timeline and the tests carry over.
 - Ruling: the proxy tests live in `tests/proxy/` and are not part of the ordinary suite: they need the running end-to-end stack, so they are marked `proxy`, left out by default like the slow test, and run by `make e2e` and by CI's end-to-end job. Why: the ordinary suite must run with no container but the database and Redis.
+
+- Ruling: the user explores the backend on this machine for the first hours of this phase. Until the user says so, only the viewer's builder runs: it touches nothing but `web/` and no container. 12N, which rebuilds and restarts containers, starts after that.
+- Ruling, on spending (the user asked on 18 Nov for careful use of the weekly limit, without loss of quality): Opus builds the viewer and runs the two adversarial reviews; Sonnet builds the front door, makes specified fixes and re-reads them. A builder runs each suite once at the end, and the controller once more. The reading is logged at each gate; no new work starts above 93%.
 
 ## Gate 12 checklist
 
-- [ ] The controller has seen the trial in a real browser and recorded what it saw and the frame rate.
+- [ ] The controller has read the trial's screenshots and recorded what it saw; the frame rate on real graphics is recorded when the user is back.
 - [ ] The controller has read every diff.
 - [ ] Web: `npm run lint`, `npm run typecheck`, `npm test` and `npm run build` are clean.
 - [ ] The backend suite, coverage, the slow test, mypy, Ruff and the deployment check are still clean.

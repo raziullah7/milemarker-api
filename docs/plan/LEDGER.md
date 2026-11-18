@@ -91,3 +91,5 @@ Repo: this repository (commit identity must be `Razi Ullah <50240668+raziullah7@
 - Scoped re-review of the fix wave dispatched (Sonnet, fresh, `_r` test database).
 - CI green on c53e467 (run 44376460013). 11R (Sonnet, fresh): 7 of 9 closed, 2 in part as ruled, 6 Notes, all ruled in `PHASE-11.md`. Live-check on the stand-in: 42 of 49, the seven others being trips with no recording.
 - **Phase 11: complete.** Gate 11 passed, Thursday 19 Nov, about 00:40. `next` merged into `main`. Quota: weekly limit for all models at 70%.
+- `main` and `next` both at 3c55cdf on GitHub; CI run on `main`: 44379472467.
+- Phase 12 started. BASE: 3c55cdf. Three rulings added to `PHASE-12.md`: the trial is judged from its screenshots overnight and on real graphics in the morning; only the viewer's builder runs while the user explores the backend; spending. 12V (Opus) dispatched for the trial, its first part.

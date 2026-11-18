@@ -68,7 +68,7 @@ One throwaway page, reachable at `http://127.0.0.1:5173/trial.html`, that settle
 
 Set the project up properly while you do it (the scaffold, the scripts of `PHASE-12.md`, the pinned versions, strict TypeScript, ESLint), because the build goes on from it; only the trial page itself is thrown away.
 
-Look at it yourself: take screenshots with Playwright at 1, 5, 10 and 16 seconds and read them as images. A headless browser draws with software, so its frame times mean nothing; the controller will open the page on real graphics. Say plainly what you see in each screenshot, including what looks wrong.
+Look at it yourself: take screenshots with Playwright at 1, 5, 10 and 16 seconds and read them as images. A headless browser draws with software, so its frame times mean nothing on their own; record them anyway, and save the four screenshots under `web/trial-shots/` (a folder git ignores) so the controller can read them. Say plainly what you see in each screenshot, including what looks wrong.
 
 Then write the first section of your report and **stop**. Reply with: whether the three things work, what you saw, the answers to the three unknowns above, anything in "What is known already" that turned out wrong, and the exact commands to start the three processes so the controller can open the page. Leave the three processes stopped.
 

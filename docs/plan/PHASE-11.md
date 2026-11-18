@@ -104,7 +104,7 @@ A fresh reviewer, who wrote none of the fixes, re-read the fix commit (`reports/
 
 ## Result
 
-**Gate 11 passed** on Thursday 19 Nov 2026, about 00:40 local time, inside the cut line. Redis and the second worker stay.
+**Gate 11 passed** on Thursday 19 Nov 2026, about 00:20 local time, inside the cut line. Redis and the second worker stay.
 
 **Delivered**
 
