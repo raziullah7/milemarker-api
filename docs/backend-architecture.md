@@ -346,6 +346,7 @@ The version number is one integer, `CACHE_KEY_VERSION`, in `config/settings.py`,
 
 The API still answers. Each process falls back to its own memory for both caches and the rate-limit counters, and returns to Redis when it is back. No request fails, or is slowed by more than about half a second, because of Redis (NFR-18).
 
+- **Timeouts.** A connection to Redis times out after 0.1 seconds and a command after 0.25 seconds, with no retries. "About half a second" in NFR-18 is tested as 0.5 seconds: a request with Redis unreachable takes no more than 0.5 seconds longer than the same request with Redis up.
 - **Trying again.** A process that has fallen back does not touch Redis for 30 seconds, then tries again. A dead Redis therefore costs one short timeout every 30 seconds, not one per request. A try that fails starts another 30 seconds of fallback.
 - **What is logged.** Each process logs one warning when it falls back, and one line when it returns to Redis. A failed try during the same outage logs nothing new, so a worker logs one warning per outage (acceptance check 13).
 
@@ -405,6 +406,8 @@ Small parts first, the map last, so the result is readable in Postman without sc
 }
 ```
 
+**Unchanged since release 1.0.** The body and the status code of this answer are as release 1.0 gave them. Only headers are added: the request ID, the security headers, and compression through nginx (section 18).
+
 **Stops.** Stop 1 always has `kind: "start"`: it is the fuel bought before leaving, priced at the listed station nearest the start, and its `lat` and `lng` are the start place. Every other stop has `kind: "station"`, and its `lat` and `lng` are the point where the road passes the station's city, so it sits on the route line. The CSV has no coordinates of its own.
 
 **Warnings.** A list of plain sentences. One is added when the first fill-up station is more than 25 miles from the start, naming the station and the distance.
@@ -445,11 +448,12 @@ Every error has the same body, whatever raised it:
 
 `trips/errors.py` holds the table from code to status and builds this body. It also turns the framework's own errors (validation, rate limit, wrong method, unexpected failure) into the same shape. An unexpected failure is logged in full and answered with `internal_error` and no detail. A catch-all route answers every unknown address with `not_found`. Neither depends on Django's debug setting.
 
-Three answers come from outside the route's view, all in the same shape:
+Four answers come from outside the route's view, all in the same shape:
 
-- **A host that is not allowed.** A request whose `Host` is not in `DJANGO_ALLOWED_HOSTS` gets 400 `invalid_request` (D-21). Django's own error page is replaced, for 400 and 403, by handlers that answer in this shape.
+- **A host that is not allowed.** A request whose `Host` is not in `DJANGO_ALLOWED_HOSTS` gets 400 `invalid_request`, with empty `details` (D-21). Django's own 400 page is replaced by a handler (`handler400`) that answers in this shape. No 403 handler is set: nothing in the API can answer 403.
 - **The API down or too slow.** When the API cannot be reached, or does not answer within 30 seconds, nginx writes `api_unavailable` itself, with empty `details`, never an HTML error page (section 18).
-- **A request nginx refuses.** A request nginx refuses itself as malformed or too long gets 400 `invalid_request`, written by nginx.
+- **A request nginx refuses.** A request nginx refuses itself as malformed or too long gets 400 `invalid_request`, with empty `details`, written by nginx.
+- **A missing file under `/assets/`.** nginx answers 404 `not_found` itself, in this shape (section 18).
 
 Every error answer the API sends itself passes through nginx untouched.
 
@@ -481,7 +485,8 @@ The health check makes one cheap cache read before it answers, so the state it r
 
 - `drf_spectacular` in the installed apps, a `TEMPLATES` entry with `APP_DIRS`, and `DEFAULT_SCHEMA_CLASS` in the REST framework settings.
 - Its routes placed before the include of `trips.urls`, whose last pattern is the catch-all and matches everything.
-- The route view is a plain `APIView`, so the tool cannot guess its parameters or its response. They are declared by hand with `extend_schema`, in `trips/schema.py`: the three parameters, the 200 body, and every error code with the standard error shape. That includes a 503 `api_unavailable`, described as sent by the proxy when the API cannot be reached. Until they are declared, `spectacular --validate --fail-on-warn` reports one error.
+- The route view is a plain `APIView`, so the tool cannot guess its parameters or its response. They are declared by hand with `extend_schema`, in `trips/schema.py`: the three parameters, the 200 body, and the error answers in the standard error shape. Until they are declared, `spectacular --validate --fail-on-warn` reports one error.
+- The route lists 400, 422, 429, 500, 502 and 503, each with every code it can carry. Its 503 includes `api_unavailable`, described as sent by the proxy when the API cannot be reached. `not_found` is not listed on the route, because the route's address exists. `not_found` and `method_not_allowed` are described in the document's opening text.
 - The Swagger page loads its script from a CDN at `@latest` by default. `SWAGGER_UI_DIST` pins it to one version.
 
 The document is committed as `docs/openapi.yaml`. A test fails if it and the code disagree.
@@ -517,7 +522,7 @@ Left out on purpose: pandas (the `csv` module handles 8,151 rows), django-enviro
 
 ## 13. Testing
 
-No test reaches beyond the local machine. A test fixture blocks every connection except the one to the local database, and, for the Redis tests, to the Redis on the same machine.
+No test reaches beyond the local machine. A test fixture blocks every connection except those to `127.0.0.1`. That covers the local database, the stand-in routing server in its own tests, and, for the Redis tests, the Redis on the same machine.
 
 | Area | What is tested | Needs the database |
 |---|---|---|
@@ -528,7 +533,7 @@ No test reaches beyond the local machine. A test fixture blocks every connection
 | Places | The 58 names from the research run, the everyday spellings in D-3, unknown and out-of-coverage names | no |
 | Loader and index | A small CSV with duplicates, padding and a Canadian row. One test on the real CSV asserting the counts in section 6. | yes |
 | Endpoint | The routing client replaced with a fake. The response shape, the cache behaviour, and every error code. | yes |
-| Verifier | An independent checker, written from this document, applied to every successful response | yes |
+| Verifier | An independent checker, written from this document, applied to every successful response. Its rule on `meta` (R15) accepts the two public routing hosts, plus any host its caller names: `scripts/live_check.py --routing-host` names the stand-in's service, `fake-osrm`, in the end-to-end run. Its rule that each station stop lies near a place of its city and state (R17) checks against the places data its caller gives: by default the real places file and the five places added by hand (section 6); the endpoint tests give their own small places file | yes |
 | Cache | Against a real Redis, in its database 15 and nothing else, and against a dead address: the shared cache, the fallback with its one warning, the 30-second wait before Redis is tried again, the line logged on return, and, timed, that a dead Redis never stalls a request | no |
 | Health and schema | The health answer in each state. The committed OpenAPI document matches the code, and `spectacular --validate --fail-on-warn` passes | yes |
 | Settings | Host checking is on: the release 1.0 test that forbade `DJANGO_ALLOWED_HOSTS` is reversed on purpose | no |
@@ -546,13 +551,14 @@ The suite itself is pinned to the in-memory cache, because the fixture that clea
 | Viewer browser tests | It really draws: the route's pixels are sampled on the canvas, the animation is run to its end, and the finished state is compared with a screenshot within a tolerance. Also runs with WebGL off and with reduced motion on, and an accessibility scan that must find no violation. Any content security policy violation fails the run | stand-in |
 | Keyboard pass | Every control is reachable by keyboard, walked through by hand in every state (NFR-28) | — |
 
-**The stand-in routing server.** `scripts/fake_osrm.py` answers like the routing server, with the 17 saved real roads in `tests/fixtures/roads/`. A second Compose file, `docker-compose.e2e.yml`, puts it in place of the public servers and the API on a network with no route out (NFR-26). The browser tests use the viewer's built-in outlines (section 19), so they depend on no map server either.
+**The stand-in routing server.** `scripts/fake_osrm.py` answers like the routing server, with the saved real roads in `tests/fixtures/roads/`. It runs from the test image (section 18). A second Compose file, `docker-compose.e2e.yml`, puts it in place of the public servers and the API on a network with no route out (NFR-26). The browser tests use the viewer's built-in outlines (section 19), so they depend on no map server either.
 
-**CI** runs on every push and pull request (NFR-17): lint, format, type check, tests with coverage, `manage.py check --deploy`, the migration check, a dependency audit, the image build, the end-to-end run, and the viewer's lint, type check, unit tests, build and dependency audit. pre-commit runs the same checks before a commit. Dependabot proposes dependency updates.
+**CI** runs on every push and pull request (NFR-17): lint, format, type check, tests with coverage, `manage.py check --deploy`, the migration check, a dependency audit, the image build, the end-to-end run, and the viewer's lint, type check, unit tests, build and dependency audit. Dependabot proposes dependency updates.
 
 - **Type check:** the Django-free modules of section 3 (NFR-27).
 - **Coverage floor:** the coverage measured when the gate is set up in Phase 10, rounded down to a whole per cent and recorded in `pyproject.toml`. Coverage may not fall below it.
 - **Dependency audits:** `pip-audit` for the Python packages; `npm audit --omit=dev --audit-level=high` for the viewer's.
+- **Before a commit:** pre-commit runs Ruff's checks, Ruff's formatter and the file hygiene hooks (NFR-27).
 
 ## 14. Speed
 
@@ -687,23 +693,35 @@ All of it comes from the environment (NFR-20). Every default makes a fresh clone
 | `WEB_CONCURRENCY` | 2 | The number of gunicorn worker processes (NFR-19) |
 | `LOG_LEVEL` | `INFO` | The lowest level of message written to the log |
 
+**`ROUTING_SERVERS` is checked at start-up.** Each entry is trimmed, and empty entries are dropped. A value that is empty or only spaces counts as not set, and the two public servers are used: Compose passes the variable through, so on a fresh clone it arrives empty. If the value is anything else and no entry is left, or an entry has no `{coords}`, the API refuses to start: Django raises `ImproperlyConfigured`, naming the variable and the entry.
+
 ### Stopping
 
 A stop lets a request in flight finish, for up to 30 seconds (NFR-22). gunicorn stops taking new requests and gives the running ones that long. Compose must wait at least as long before it kills the container; its own default is 10 seconds. A request is therefore not cut off in the middle of a routing call, which takes about 20 seconds at worst (section 9).
 
 ### Logs
 
-Each line has a time, a level and the request's ID (NFR-24). One line is written per planned trip, with its distance, stops, total, routing calls, cache hit and time taken. The lines are plain text, not JSON (section 15). Each process also logs one warning when it falls back from Redis, and one line when it returns (section 10).
+Each line has a time, a level and the request's ID (NFR-24). The lines are plain text, not JSON (section 15).
 
-**The request ID** is made by nginx and passed to the API as `X-Request-ID`. If none arrives, as when the API is run from source, the API makes one. It is on every log line about the request, and is returned to the client in the response header `X-Request-ID`.
+**One line per trip.** Every 200 from the route, cache hits included, logs one line at INFO from the logger `trips`. Its message has this form:
+
+```text
+trip start="New York, NY" finish="Los Angeles, CA" stop_cost=10 miles=2800.6 stops=7 total=867.27 routing_calls=1 cache_hit=false own_ms=19.5
+```
+
+An error answer logs one line at WARNING with its code, and no trip figures. The one exception is an unexpected failure (`internal_error`): it is logged once, in full, at ERROR, and has no second line.
+
+Each process also logs one warning when it falls back from Redis, and one line when it returns (section 10).
+
+**The request ID** is made by nginx and passed to the API as `X-Request-ID`. nginx replaces any `X-Request-ID` the client sent with its own. If none arrives, as when the API is run from source, the API makes one. It is on every log line about the request, and is returned to the client in the response header `X-Request-ID`.
 
 ### The front door
 
 nginx, in the `web` service, is the only way in.
 
-- **What it serves.** The viewer at `/` and its built files under `/assets/`. Every other address is passed to `api`: the route, the health check, the schema and the Swagger page, and any unknown address, which still gets the API's JSON 404 `not_found`, as in release 1.0.
+- **What it serves.** The viewer at `/` and its built files under `/assets/`. A missing file under `/assets/` gets 404 `not_found` in the API's error shape, written by nginx. Every other address is passed to `api`: the route, the health check, the schema and the Swagger page, and any unknown address, which still gets the API's JSON 404 `not_found`, as in release 1.0.
 - **The `Host` header.** nginx passes on the client's own `Host`, so host checking (D-21) sees the name the client used. A name not in `DJANGO_ALLOWED_HOSTS` gets 400 `invalid_request`.
-- **The request ID.** nginx makes one for each request and passes it to the API as `X-Request-ID` (see "Logs").
+- **The request ID.** nginx makes one for each request, replacing any the client sent, and passes it to the API as `X-Request-ID` (see "Logs").
 - **The client's address.** nginx overwrites `X-Forwarded-For` with the address it saw; it does not add to what the client sent. The API trusts exactly one proxy (`DJANGO_NUM_PROXIES=1`), so the rate limit counts the address nginx saw (D-17, NFR-16).
 - **Why the API has no published port.** A client that could reach gunicorn directly could send its own `X-Forwarded-For`, and the API, trusting one proxy, would count that forged address. With no published port, every request passes through nginx, which overwrites the header. This is what keeps the forged-header bypass, found while release 1.0 was built, closed.
 - **One origin.** The viewer and the API share one origin, so no cross-origin rules are needed (D-17).
@@ -712,36 +730,60 @@ nginx, in the `web` service, is the only way in.
 - **When the API is down or too slow.** If the API cannot be reached, or does not answer within the 30 seconds, nginx answers 503 in the API's own error shape, with the code `api_unavailable`, never an HTML error page (D-24): `{"error": {"code": "api_unavailable", "message": "…", "details": {}}}`.
 - **Requests nginx refuses.** A request nginx refuses itself, as malformed or too long, gets 400 `invalid_request` in the same shape.
 - **The API's own errors** pass through untouched.
-- **Security headers.** On every answer: `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and a ban on framing. On the viewer's page only, a content security policy that allows the page's own files, the two map servers of section 19, and the workers and inline styles the map library needs. The Swagger page has no content security policy, because it loads its script from a CDN. Django's security middleware is on as well (section 12).
+- **Security headers.** On every answer: `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and a ban on framing. `Referrer-Policy` has that one value everywhere. Each answer gets its headers from one place, so none is sent twice:
+
+  | Answer | Security headers set by |
+  |---|---|
+  | The API's answers, passed through nginx | Django (its security middleware, section 12). nginx adds none to them |
+  | The viewer's page and files | nginx |
+  | The answers nginx writes itself: `api_unavailable`, a request it refuses, a missing file under `/assets/` | nginx |
+
+  On the viewer's page only, there is also a content security policy. It allows the page's own files, the two map servers (`tiles.openfreemap.org` and `gibs.earthdata.nasa.gov`, section 19), and the workers and inline styles the map library needs. Its exact text is written when the viewer is built, in Phase 12, and recorded then. The Swagger page has no content security policy, because it loads its script from a CDN.
 - **TLS.** None here. The stack is ready to run behind a TLS terminator; TLS, HSTS and redirects belong to it (D-23).
 
 ### Images
 
 The API image is built in stages. The running image holds only what runs, and runs as a user that cannot write to the code (NFR-25). It must not pick up `web/node_modules`. The `web` image builds the viewer with Node, then serves the built files from unprivileged nginx.
 
+The stand-in routing server runs from the test image, which holds the tests and the recorded roads. The running image holds neither.
+
 ### Commands
 
-The everyday commands are `make` targets, and `make help` lists them (NFR-30). Each is one portable command, so it works under Git Bash, PowerShell and Linux. The README shows the plain command beside each, for anyone without make.
+The everyday commands are `make` targets, and `make help` lists them (NFR-30). Each recipe line is one plain command, so the targets work on Linux, on macOS, and on Windows under Git Bash or PowerShell. The README shows the plain command beside each, for anyone without make.
 
 | Target | Does |
 |---|---|
-| `up`, `down`, `logs`, `ps` | The Compose stack |
-| `dev` | Database and Redis in Docker, then the API from source with reload |
-| `web-dev` | The viewer's dev server, passing `/api` to the API |
-| `test`, `test-slow`, `test-docker`, `coverage` | The suite: from source, the slow exactness test, in a container, with coverage |
-| `lint`, `format`, `typecheck`, `check` | Ruff, formatting, types, and all of them plus the tests |
-| `e2e` | The end-to-end stack on the stand-in routing server, then Newman and the browser tests |
-| `live` | The live-check script against the running stack (uses the public routing server) |
-| `load`, `migrate`, `shell` | Station load, migrations, Django shell |
-| `clean` | Stop everything and delete the volumes |
+| `help` | Lists every target with its one-line description |
+| `up` | The Compose stack, built, in the background |
+| `down` | Stops it |
+| `logs` | Follows the API's log |
+| `ps` | Shows the services |
+| `dev` | The database container, then the API from source with auto-reload on port 8001 (the make variable `DEV_PORT`) |
+| `migrate`, `load`, `shell` | `manage.py migrate`, `manage.py load_stations` and `manage.py shell`, from source |
+| `test` | The suite from source |
+| `test-slow` | The slow exactness test |
+| `test-docker` | The suite in a container |
+| `coverage` | The suite with a coverage report in the terminal |
+| `lint` | Ruff's checks and its format check |
+| `format` | Ruff's fixes and formatter |
+| `typecheck` | mypy, with its settings from `pyproject.toml` |
+| `audit` | pip-audit |
+| `check` | `lint`, `typecheck` and `test` |
+| `e2e-up`, `e2e-down` | Start and stop the end-to-end stack with the stand-in routing server |
+| `e2e` | Newman on the whole Postman collection against the running end-to-end stack. From Phase 12 it then runs the viewer's browser tests against the same stack |
+| `live` | `scripts/live_check.py` against the running stack. It calls the public routing server |
+| `clean` | Stops everything and deletes the volumes |
+| `web-dev` | Comes with the viewer, in Phase 12: the viewer's dev server, passing `/api` to the API that `make dev` serves on port 8001 |
 
-Running from source, as `make dev` does, the API uses the in-memory cache unless `REDIS_URL` is set. Redis is published on `127.0.0.1:${REDIS_PORT:-6379}` for that case and for the Redis tests.
+`make dev` starts only the database container. The API it runs from source uses the in-memory cache unless `REDIS_URL` is set. Redis is published on `127.0.0.1:${REDIS_PORT:-6379}` for that case and for the Redis tests.
 
 ## 19. The viewer
 
 A separate web application, in `web/`, that draws one trip on a map (FR-18). It is opened as `/?start=…&finish=…&stop_cost=…`, the same parameters as the API, for example `/?start=New York, NY&finish=Los Angeles, CA&stop_cost=10`. It reads them, asks the API once (FR-21), and draws the GeoJSON the API returns (D-2). The API's response does not change for it and carries no link to it.
 
 It has no form: it is a viewer of one trip, named by its address (D-19). Opened with no trip, it shows the slowly turning globe and three example trips to choose from: New York, NY to Los Angeles, CA; Seattle, WA to Miami, FL; and Dallas, TX to Houston, TX.
+
+"No trip" means neither `start` nor `finish` is in the address. With only one of them, the viewer asks the API like any other address, and shows the `invalid_request` the API answers with.
 
 ### Stack
 
@@ -762,9 +804,18 @@ It is built into the `web` image and served by nginx (section 18). `make web-dev
 | Map module | The one module that talks to MapLibre: the globe, the camera, the route line and its colour boundary, the markers, the remote map, and the built-in outlines beneath it |
 | Panel components | React components that show the answer: the totals, the warning, the assumptions, the stop cards, the error states, Skip, Replay and the scrubber. They never call MapLibre themselves; choosing a stop's card asks the map module to fly there |
 
-**The panel** (FR-23) shows the distance, the number of stops, the total fuel cost, the lowest possible bill, any warning, the assumptions, and one card per stop with its name, city and state, price, gallons, cost and mile. Every figure shown is the API's, unchanged; the counters count up to those figures.
+**The panel** (FR-23) shows the distance, the number of stops, the total fuel cost, the lowest possible bill, any warning, the assumptions, and one card per stop with its name, city and state, price, gallons, cost and mile. Every figure shown is the API's, unchanged; the counters count up to those figures. Only the format is the viewer's:
 
-**Errors** (FR-24). Each API error code has its own message in the panel. An unknown place shows the API's suggestions as links that reopen the viewer with that place corrected. A rate-limited answer says when to retry, from `retry_after_seconds`. An API that cannot be reached, whether nginx answers `api_unavailable` or nothing answers at all, is said plainly.
+| Figure | Shown as |
+|---|---|
+| Miles | A thousands separator and one decimal: `2,800.6 mi` |
+| Money | `$867.27` |
+| Gallons | Two decimals |
+| A price per gallon | Exactly as the API gives it: `$3.239 / gal` |
+
+**Errors** (FR-24). Each API error code has its own message in the panel: a short heading for the code and, under it, the API's own `message`. An unknown place shows the API's suggestions as links that reopen the viewer with that place corrected. A rate-limited answer says when to retry, from `retry_after_seconds`. An API that cannot be reached, whether nginx answers `api_unavailable` or nothing answers at all, is said plainly.
+
+The error headings and the other fixed sentences (the loading state, the first card's sentence, the no-WebGL2 sentence) are written when the viewer is built, in Phase 12, and recorded in the test cases then. The tests find elements by their role and test ID, and compare figures, not prose.
 
 Every control, including the stop cards, Skip, Replay and the scrubber, is reachable by keyboard (NFR-28).
 
@@ -781,13 +832,24 @@ About 16 seconds, with Skip and Replay (FR-22).
 | 5 | 15–16.5 s | The camera settles. The finish marker pulses. A scrubber appears: drag it to replay any moment. |
 | after | | Choosing a stop's card flies the camera to it. |
 
-Skip jumps to the end. Replay starts again. During the intro, a press on the map, a wheel turn, a touch or the Escape key cancels it and hands over control.
+- **Stop 1** (the fill-up at the start) appears at 8 s, as the line starts: its marker, its card and its cost.
+- **Skip** jumps to the end. **Replay** starts again.
+- **Cancelling the intro.** During the intro, a press on the map, a wheel turn, a touch or the Escape key cancels it and hands over control. The trip is then shown finished, as after Skip, and the camera stays where the visitor's own gesture leaves it.
 
 ### Revealing the route
 
 The whole route line is given to the map once. It is revealed by moving a colour boundary along it: behind the boundary the line is drawn, ahead of it the line is not shown. Each frame moves the boundary, one cheap update, instead of rebuilding the line, so the work per frame does not grow with the route's length (NFR-29). New York to Los Angeles has about 5,600 points.
 
-**Stop timing uses position along the drawn line, not the mile marker.** The boundary's place is a fraction of the line's length as drawn, measured on the map's projection. A mile marker is a fraction of the length on the ground. The projection stretches distance by different amounts at different latitudes, so the two fractions differ, and a stop timed by its mile marker would pop in before or after the head reaches it. Each stop is therefore timed by its own position along the drawn line. A stop's `lat` and `lng` lie on the route line (section 11), so that position can be found.
+**The head moves at a constant speed along the drawn line.** Its progress, the fraction of the drawn length behind it, rises linearly from 0 at 8 s to 1 at 15 s.
+
+**Two running totals per point.** For each point of the route line the viewer keeps:
+
+- the ground distance from the start, by the great-circle formula, scaled so the last point's total equals the API's `distance_miles`;
+- the drawn length from the start in Web Mercator, which is what the map library's line progress measures.
+
+Between two points, both are interpolated linearly. The drawn length places the boundary and times the stops; the ground distance gives the road miles at the head.
+
+**Stop timing uses position along the drawn line, not the mile marker.** The boundary's place is a fraction of the line's length as drawn, measured in Web Mercator. A mile marker is a fraction of the length on the ground. The projection stretches distance by different amounts at different latitudes, so the two fractions differ, and a stop timed by its mile marker would pop in before or after the head reaches it. Each stop is therefore timed by its own position along the drawn line. A stop's `lat` and `lng` lie on the route line (section 11), so that position can be found.
 
 **The distance counter** shows the road miles at the head of the line, not the fraction of the line drawn. It therefore reads a stop's mile marker as the head reaches that stop.
 
@@ -795,21 +857,21 @@ The whole route line is given to the map once. It is revealed by moving a colour
 
 | Situation | What the viewer does |
 |---|---|
-| The visitor's system asks for reduced motion | Opens on the finished state, with no camera animation (FR-25) |
+| The visitor's system asks for reduced motion | Opens on the finished state, with no camera animation (FR-25). On the page with no trip, the globe does not turn |
 | No WebGL2 | A static drawing of the route, the same panel, and a sentence saying why |
 | The map servers cannot be reached | Draws on built-in outlines of land and US state lines from Natural Earth, bundled in the app. The globe and the route still draw |
 | Slow graphics | Pixel density capped at 2, terrain off, three small updates per frame (NFR-29) |
 
-**How the outlines take over.** The built-in outlines are always the bottom layer, under the remote map. The remote map's description (its style) is given 4 seconds to arrive; if it has not, the viewer goes on with the outlines alone. A tile that fails later simply does not draw, and the outlines show through.
+**How the outlines take over.** The built-in outlines are always the bottom layer, under the remote map. The remote map's description (its style) is given 4 seconds to arrive; if it has not, the viewer goes on with the outlines alone, and a description that arrives later is ignored for that page view. A tile that fails later simply does not draw, and the outlines show through.
 
 The browser tests use the built-in outlines, so they never depend on someone else's server.
 
 ### Map sources and credit
 
-| Source | Used for | Terms | Credit on screen |
-|---|---|---|---|
-| NASA night-lights imagery (Black Marble), from NASA GIBS | The globe from space, with MapLibre's atmosphere, on a black page. It fades out as the camera comes down | Public data; no key | NASA GIBS |
-| OpenFreeMap's dark vector style | Roads and place names once the camera is low | Free; no key, no account, no view limits | OpenFreeMap, OpenMapTiles, OpenStreetMap |
-| Natural Earth outlines | The fallback, and the browser tests | Public domain; bundled in the app | None required |
+| Source | Server | Used for | Terms | Credit on screen |
+|---|---|---|---|---|
+| NASA night-lights imagery (Black Marble), from NASA GIBS | `gibs.earthdata.nasa.gov` | The globe from space, with MapLibre's atmosphere, on a black page. It fades out as the camera comes down | Public data; no key | NASA GIBS |
+| OpenFreeMap's dark vector style | `tiles.openfreemap.org` | Roads and place names once the camera is low | Free; no key, no account, no view limits | OpenFreeMap, OpenMapTiles, OpenStreetMap |
+| Natural Earth outlines | None: bundled in the app | The bottom layer, the fallback, and the browser tests | Public domain; no credit required | Natural Earth |
 
-The credits are on screen at all times (FR-26). The map's credit control stays expanded and shows what each source asks for. The exact wording and links are copied from each provider's own page when the viewer is built, in Phase 12, and recorded together with those pages' addresses.
+The credits are on screen at all times (FR-26), and they name the sources in use. Without WebGL2 the static drawing uses only the API's data and the built-in outlines, so it credits Natural Earth. The map's credit control stays expanded and shows what each source asks for. The exact wording and links are copied from each provider's own page when the viewer is built, in Phase 12, and recorded together with those pages' addresses.

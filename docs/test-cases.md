@@ -24,7 +24,7 @@ Conventions:
 | Postman collection | The committed collection's own checks pass | Newman, from the command line (section 7) |
 | Fresh clone | A reviewer can run everything from an empty folder, with no account and no key | By hand, steps FC (section 7) |
 
-No automated test reaches beyond the local machine (NFR-13). A test fixture blocks every connection except the one to the local database (PJ-03).
+No automated test reaches beyond the local machine (NFR-13). A test fixture blocks every connection except those to the same machine: the local database and, for their own tests, the local Redis and the stand-in routing server (PJ-03).
 
 ## 2. Automated test catalogue
 
@@ -280,7 +280,7 @@ The Django test client against the real URL, with PostgreSQL, the fake routing s
 
 ### 2.11 Verifier
 
-The verifier checks rules R1 to R16 (section 4). It reads the real CSV for R5, or in the endpoint tests the stations the test created.
+The verifier checks rules R1 to R17 (section 4). It reads the real CSV for R5, or in the endpoint tests the stations the test created.
 
 | ID | UC | Input | Expected |
 |---|---|---|---|
@@ -390,17 +390,18 @@ Checked on every successful response: by the verifier in the endpoint tests (VF-
 3. **R3 Gallons.** The stops' gallons add up exactly to `summary.gallons`, which equals `summary.distance_miles` ÷ 10 exactly.
 4. **R4 Money.** Each stop's `cost` equals its `gallons` × `price_per_gallon`, rounded half-up to cents. `summary.total_fuel_cost` equals the sum of the costs exactly.
 5. **R5 Prices and names.** Each stop's `price_per_gallon` equals, as an exact decimal, the lowest `Retail Price` the CSV lists for its `station_id`. Its `name`, `address`, `city` and `state` equal that row's, with spaces trimmed; on a price tie, the first such row.
-6. **R6 Stops.** `fuel_stops[0]` has `kind` `start`, `mile_marker` 0.0, and `lat` and `lng` equal to `summary.start`. Every other stop has `kind` `station`. `order` runs 1, 2, 3… Mile markers strictly increase and stay below `distance_miles`. No `station_id` appears twice.
+6. **R6 Stops.** `fuel_stops[0]` has `kind` `start`, `mile_marker` 0.0, and `lat` and `lng` equal to `summary.start`. Every other stop has `kind` `station`. `order` runs 1, 2, 3… Mile markers strictly increase and stay below `distance_miles`. No `station_id` appears twice. Every stop after the first buys more than 0 gallons; the first buys 0 or more.
 7. **R7 Lowest bill.** `lowest_possible_fuel_cost` is not above `total_fuel_cost`, and `lowest_possible_stops` is at least 1. When `assumptions.stop_cost` is 0, the two costs are equal (FR-16).
 8. **R8 Stop count.** `summary.stops` equals the number of `fuel_stops`, and is at least `distance_miles` ÷ 500 rounded up.
 9. **R9 Assumptions.** `assumptions` is `range_miles` 500, `miles_per_gallon` 10, `tank_gallons` 50, `starting_fuel_gallons` 0, `search_radius_miles` 5, and `stop_cost` equal to the request's, or 10.0 when none was sent.
 10. **R10 First fill-up.** `first_fill_distance_miles` is 0 or more. If it is over 25, `warnings` holds exactly one entry, containing `fuel_stops[0].name` and the distance; otherwise `warnings` is `[]`.
 11. **R11 Map.** `map` is a GeoJSON FeatureCollection. Feature 0 is a LineString with `kind` `route` and `distance_miles` equal to the summary's. Then one Point per stop, in order, with `kind` `stop` and `order`, `name`, `mile_marker`, `price_per_gallon`, `gallons` and `cost` equal to the stop's, and `title` `order. NAME, City ST`. Then a Point with `kind` `start` at `summary.start` and one with `kind` `finish` at `summary.finish`. Every Point has `title` and `marker-color`. Coordinates are `[lng, lat]`.
-12. **R12 Stops on the line.** Each `station` stop's `[lng, lat]` is one of the route line's coordinates. Their positions in the line increase with `order`. For a stop at line position `i`, `mile_marker` is within 0.5% + 0.05 miles of `0.5 × i`.
+12. **R12 Stops on the line.** Each `station` stop's `[lng, lat]` is one of the route line's coordinates. Their positions in the line increase with `order`. With `n` points in the line, its own length is `0.5 × (n − 2)` plus the distance between its last two points; for a stop at line position `i`, counted from 0, `mile_marker` is within 0.1 mile of `0.5 × i × distance_miles ÷` that length.
 13. **R13 Line spacing.** Consecutive route-line points are at most 0.51 miles apart, and the line has `2 × distance_miles + 1` points, within 1% or 1 point, whichever is larger. The line has one point every half mile plus its end point, so a correct line can differ from that figure by almost a whole point.
 14. **R14 Precision.** Every number is a JSON number. Miles have at most 1 decimal, gallons and money at most 2, coordinates at most 5.
-15. **R15 Meta.** `routing_calls` is 0, 1 or 2. `cache_hit` true implies `routing_calls` 0. `timings_ms.routing`, `own` and `total` are 0 or more, and `routing` is 0 when `routing_calls` is 0. `routing_server` is `router.project-osrm.org` or `routing.openstreetmap.de`.
+15. **R15 Meta.** `routing_calls` is 0, 1 or 2. `cache_hit` true implies `routing_calls` 0. `timings_ms.routing`, `own` and `total` are 0 or more, and `routing` is 0 when `routing_calls` is 0. `routing_server` is `router.project-osrm.org` or `routing.openstreetmap.de`, or a host the verifier's caller names: the end-to-end run names the stand-in, `fake-osrm`.
 16. **R16 Labels.** `summary.start.label` and `summary.finish.label` have the form `City, ST`, with ST one of the lower 48 states or DC.
+17. **R17 Stations near the road.** Each `station` stop's `[lng, lat]` lies within 15 miles of a place with the stop's `city` and `state`, in the places data the verifier's caller gives. By default that is the rows of `data/us_cities.csv`, which the verifier reads itself, and the five places added by hand (architecture section 6), of which it keeps its own copy; the endpoint tests give their own small places file. The 15 miles are the 5-mile search radius plus at most 10 miles of county averaging (D-5).
 
 ## 5. Speed checks
 
@@ -471,3 +472,417 @@ How each acceptance check in `requirements.md` section 9 is proven.
 | 8. The fuel tests pass, including the two exact methods | FU-01 to FU-25, EX-01, EX-02 |
 | 9. A fresh clone starts with one Compose command, with no key | FC-01, CT-01 |
 | 10. Loom recorded, links sent before the deadline | M03 |
+| 11. Fresh clone, no `.env`: one Compose command starts the database, Redis, the setup, the API and the viewer; the API answers through the proxy at release 1.0's address and has no published port | CF-33, CF-18, CF-21, CF-22, CF-23, PX-01, PX-13 |
+| 12. Twenty repeats of one trip are all cache hits, whichever worker answers | CA-20, CA-01 |
+| 13. Redis stopped: requests still 200, each worker logs one warning, health reports `fallback`; Redis back: the shared cache returns | CA-21, CA-22, CA-06, CA-10, CA-11, CA-12, HS-04, HS-05 |
+| 14. The 61st request in a minute from one client is refused with 429, whatever `X-Forwarded-For` it sends | PX-07, PX-08, HM-07, HM-08 |
+| 15. Health answers 200; the OpenAPI document is valid and describes the parameters, the 200 body and every error code; the Swagger page renders | HS-01, HS-19, HS-11 to HS-16, HS-18 |
+| 16. `manage.py check --deploy` passes; CI is green on `main` | CF-12, CI-02, CI-07 |
+| 17. The end-to-end run passes the Postman collection and the viewer's browser tests while the API has no route to the internet | EE-03, EE-05, EE-06 |
+| 18. The viewer plays New York to Los Angeles to its end: the route drawn, one marker per stop, the panel's totals equal to the API's | VB-01, VB-04, VB-05, VB-06 |
+| 19. The fallbacks work: reduced motion, no WebGL2 and each API error; the accessibility scan finds no violation | VB-13, VB-14, VB-23, VB-24, VP-06, VB-19 |
+| 20. `make help`, `make test`, `make lint` and `make up` work | MK-01, MK-05, MK-02, MK-10 |
+
+## 9. Release 2: test catalogue
+
+The cases below were written before the second release's code, from `requirements.md` (FR-18 to FR-26, NFR-16 to NFR-31, D-15 to D-24, acceptance checks 11 to 20), architecture sections 2, 3, 10, 11, 13, 16, 18 and 19, and the rulings on the two audits of release 1.0 in `docs/plan/PHASE-9.md`. The architecture names the stand-in routing server's file and roads only; its interface is taken from `docs/plan/briefs/phase10-A-harness.md`. The points this catalogue first left open are settled in `docs/plan/PHASE-9.md`, "Points raised by the test design, settled"; a case that cites "row n" follows that table's row. Sections 1 to 8 still hold.
+
+Conventions, in addition to those at the top:
+
+- Cases run by a test suite (`uv run pytest`, or the viewer's unit and component tests) have the columns of section 2. Cases run against a running stack, in a browser, by CI or by hand have the columns of section 7; their **Actual** and **Result** are filled in when they are run.
+- "The stack" is the Compose stack of architecture section 18. "The end-to-end stack" is the same with `docker-compose.e2e.yml` on top: the stand-in routing server in place of the public servers, and the API with no route out. A stack case runs on the end-to-end stack unless it says otherwise, so it makes no call to the public routing servers.
+- "Through nginx" means at `http://127.0.0.1:8000`, the address release 1.0 used.
+- "In the standard shape" means the body `{"error": {"code": …, "message": …, "details": …}}` of EP-39: a non-empty message, and `details` an object.
+- P, N and EP numbers name the requests of sections 2.10 and 3.
+
+### 9.1 Test data
+
+| Name | What it is |
+|---|---|
+| Recordings | The recorded roads in `tests/fixtures/roads/`. The 17 of release 1.0: `bos_dc`, `bos_sea`, `chi_hou`, `dal_hou`, `det_bos`, `det_buf`, `det_porthuron`, `elpaso_delrio`, `houlton_madawaska`, `intlfalls_baudette`, `keywest_miami`, `laredo_brownsville`, `montauk_nyc`, `nyc_la`, `sandiego_calexico`, `sea_blaine`, `sea_mia`. Four more are added in Phase 10 (row 1): Los Angeles to New York, St. Louis to Winston-Salem and Dallas to Phoenix, recorded then, and Los Angeles to Seattle, from the Phase 1 research recordings. Each holds one direction only: `nyc_la` is New York to Los Angeles, and Houston to Dallas is not recorded. |
+| `dal_hou` | The recorded Dallas to Houston road: 238.1 miles; first waypoint `[-96.797185, 32.777588]`, second `[-95.36593, 29.765262]`. Asked for from the places table's Dallas (32.790439, −96.80439) and Houston (29.7652, −95.3657), its path coordinates are `-96.80439,32.790439;-95.3657,29.7652`. |
+| Live Redis | The stack's Redis, published on 127.0.0.1:6379. The Redis tests use `redis://127.0.0.1:6379/15` and no other database. |
+| Refusing Redis | `redis://127.0.0.1:1/15`. Nothing listens there, so every connection is refused at once. |
+| Silent Redis | A listener started by the test on 127.0.0.1 that accepts connections, never answers, and counts the connections it receives. It stands for a Redis that hangs. |
+| Switchable Redis | A forwarder started by the test on 127.0.0.1, in front of the live Redis. Switched off, it closes each connection at once and counts it; switched on, it passes connections through. |
+| Two processes | Two separate Python processes, A and B, standing for two workers. Each has its own fake routing service. |
+| Routing-free request | `GET /api/v1/route/?start=Dallas, TX`. It is answered 400 `invalid_request` before any place lookup or routing call, so it serves wherever only the number of requests matters. |
+| Viewer answer V1 | A 200 body for the viewer's unit and component tests. Start `New York, NY` (40.7484, −73.9967), finish `Chicago, IL` (41.8781, −87.6244). distance_miles 853.2; gallons 85.32; stops 2; total_fuel_cost 268.04; lowest_possible_fuel_cost 268.04; lowest_possible_stops 2; first_fill_distance_miles 3.1; warnings `[]`; assumptions as AN-07 with stop_cost 10.0. Stop 1: order 1, kind `start`, `DELTA`, Jersey City, NJ, mile_marker 0.0, at the start, price_per_gallon 3.239, gallons 39.15, cost 126.81. Stop 2: order 2, kind `station`, `SHEETZ #639`, Youngstown, OH, mile_marker 391.5, at (41.0998, −80.6495), price_per_gallon 3.059, gallons 46.17, cost 141.23. The route line's coordinates are `[[-73.9967, 40.7484], [-80.6495, 41.0998], [-87.6244, 41.8781]]`. Its figures obey R1 to R4 and R6 to R10. |
+| Viewer answer V2 | V1 with first_fill_distance_miles 30.0 and one warning, in the API's words: `The nearest listed fuel station to the start is DELTA in Jersey City, NJ, 30.0 miles away. The first fill-up is priced there.` |
+| Error bodies | For each code of the error table in architecture section 11, the API's body with its status: `invalid_request` 400, details.fields `{"finish": ["…"]}`; `unknown_place` 400, as N03's actual result; `not_found` 404; `method_not_allowed` 405; `outside_coverage` 422, field `start`, query `Honolulu, HI`; `route_leaves_usa` 422, miles_abroad 252.0; `no_route` 422; `no_fuel_plan` 422, gap_start_mile 0.0, gap_miles 885.3; `rate_limited` 429, retry_after_seconds 37; `internal_error` 500; `routing_unavailable` 502, reason `timeout`; `stations_not_loaded` 503; `api_unavailable` 503. Each body's `message` is `Message for ` followed by its code and a full stop, for example `Message for no_route.`. A code whose row lists no details has `details` `{}`. |
+| Test line T | For the viewer's timeline: a route line of three points, A, B and C, given by its two running totals (row 6). Drawn length, in Web Mercator units scaled up for reading: 0 at A, 3 at B, 7 at C, so the head's positions are A (0, 0), B (3, 0) and C (3, 4). Road miles: 0.0 at A, 100.0 at B, 200.0 at C. The two pieces are equally long on the ground but not as drawn, as when the projection stretches one more than the other. Stop 1 is at A (mile_marker 0.0, cost 126.81), stop 2 at B (mile_marker 100.0, cost 141.23). distance_miles 200.0; total_fuel_cost 268.04. |
+| Line M | For the running totals of row 6: a route line of three `[lng, lat]` points, `[[0, 0], [0, 60], [10, 60]]`, with distance_miles 4,000.0: north along the Greenwich meridian to 60° N, then 10° east along 60° N. Web Mercator here is `x = (180 + lng) ÷ 360`, `y = (180 − (180 ÷ π) × ln(tan(π ÷ 4 + lat × π ÷ 360))) ÷ 360`, the map library's own. |
+
+Viewer test IDs. The viewer's tests find elements by role and by these `data-testid` values (row 9). The visible wording of headings and of the fixed sentences is written when the viewer is built and recorded in Phase 12; the tests compare figures and test IDs, not prose.
+
+| Test ID | Element |
+|---|---|
+| `loading` | The loading state |
+| `trip-distance`, `trip-stops`, `trip-total`, `trip-lowest` | The panel's distance, number of stops, total fuel cost and lowest possible bill |
+| `trip-warning` | Each warning, in the API's words |
+| `assumptions` | The assumptions |
+| `stop-card` | Each stop's card, in order. In it: `stop-name`, `stop-place` (city and state), `stop-price`, `stop-gallons`, `stop-cost`, `stop-mile` |
+| `stop-start-note` | On stop 1's card only: the sentence that its fuel is priced at the listed station nearest the start and that the stop is drawn at the start |
+| `counter-distance`, `counter-cost` | The distance and fuel-cost counters |
+| `error` | The error state. In it: an element of role `heading`, one for each code, and `error-message`, the API's own `message` |
+| `error-retry` | In a `rate_limited` error: the seconds to wait, from `details.retry_after_seconds` |
+| `suggestion` | Each suggestion, of role `link` |
+| `example` | Each example trip, of role `link` |
+| `skip`, `replay` | Of role `button`, named Skip and Replay |
+| `scrubber` | Of role `slider` |
+| `static-route`, `no-webgl` | Without WebGL2: the static drawing, and the sentence saying why |
+| `credits` | The map's credits |
+
+Figures are shown as row 9 sets: miles with a thousands separator and one decimal, as `2,800.6 mi`; money as `$867.27`; gallons to two decimals, as `39.15`; a price exactly as the API gives it, as `$3.239 / gal`.
+
+### 9.2 Configuration and start-up
+
+Architecture section 18 ("Configuration"), section 12, NFR-20, NFR-21 and NFR-24. Each setting is read in a separate process with only the variables the case names, so the test runner's own additions (it adds `testserver` to the allowed hosts) do not enter.
+
+| ID | UC | Input | Expected |
+|---|---|---|---|
+| CF-01 | UC-36 | `DJANGO_SECRET_KEY` unset; the settings loaded in two separate processes | Each has a non-empty `SECRET_KEY`, and the two differ: a random key is made at start-up. `config/settings.py` gives no key text as a default (D-21) |
+| CF-02 | UC-36 | `DJANGO_SECRET_KEY=cf-02-0123456789-abcdefghijklmnopqrstuvwxyz-0123456789` | `SECRET_KEY` is that text |
+| CF-03 | UC-36 | `DJANGO_DEBUG` unset; then `DJANGO_DEBUG=1` | `DEBUG` false; then true. Error answers are JSON either way (EP-36, HM-02) |
+| CF-04 | UC-36 | `DJANGO_ALLOWED_HOSTS` unset; then `DJANGO_ALLOWED_HOSTS=api.example,api2.example` | `ALLOWED_HOSTS` is `["localhost", "127.0.0.1", "[::1]"]`; then `["api.example", "api2.example"]`. `"*"` is in neither. The release 1.0 test that forbade the variable is reversed on purpose (architecture section 13) |
+| CF-05 | UC-34 | `DJANGO_NUM_PROXIES` unset; then `DJANGO_NUM_PROXIES=1` | `REST_FRAMEWORK["NUM_PROXIES"]` is 0; then 1. Its effect: HM-07, HM-08 |
+| CF-06 | UC-36 | `DATABASE_URL` unset | `DATABASES["default"]`: PostgreSQL engine, host `localhost`, port 5432, name `milemarker`, user `milemarker` |
+| CF-07 | UC-33 | `REDIS_URL` unset; then `REDIS_URL=redis://127.0.0.1:6379/15` | Unset: the two caches and the rate-limit counters are the process's own memory, and health reports `memory` (HS-01). Set: they are in that Redis, and health reports `redis` (HS-03) |
+| CF-08 | UC-39 | `ROUTING_SERVERS` unset; then `http://127.0.0.1:5000/route/v1/driving/{coords}?overview=full&geometries=geojson`; then that template, a comma, and `http://127.0.0.1:5001/routed-car/route/v1/driving/{coords}?overview=full&geometries=geojson` | The two public templates of PJ-04; then that one template alone; then both, in that order |
+| CF-09 | UC-39 | `ROUTING_SERVERS=http://127.0.0.1:5000/route/v1/driving/?overview=full` (no `{coords}`); then a valid template, a comma, and that one | Each time the settings refuse to load with Django's `ImproperlyConfigured`, so the API does not start. Its message contains `ROUTING_SERVERS` and the entry `http://127.0.0.1:5000/route/v1/driving/?overview=full` (row 21) |
+| CF-10 | UC-36 | `gunicorn.conf.py` read with `WEB_CONCURRENCY` unset; then with `WEB_CONCURRENCY=3` | 2 worker processes of 4 threads each, eight request slots in all (Q0a-25); then 3 worker processes |
+| CF-11 | UC-35 | `LOG_LEVEL` unset; then `LOG_LEVEL=WARNING`. Each time, one message logged at INFO and one at WARNING | Unset: both are written. `WARNING`: only the WARNING message |
+| CF-12 | UC-36 | `uv run python manage.py check --deploy`, no variable set | Output "System check identified no issues", with any number silenced; exit code 0. Each entry of `SILENCED_SYSTEM_CHECKS` has a comment beside it giving its reason. `SECURE_HSTS_SECONDS` is 0 and `SECURE_SSL_REDIRECT` is off: they belong to the TLS terminator (D-23) |
+| CF-13 | UC-35 | EP-01's request with the header `X-Request-ID: cf-13`; the log lines written while it is answered | Every line about the request carries a time, a level and `cf-13`. The response header `X-Request-ID` is `cf-13` |
+| CF-14 | UC-35 | EP-01's request with no `X-Request-ID`; then the same again | Each response carries a non-empty `X-Request-ID`, made by the API; the two differ; each request's log lines carry its own |
+| CF-15 | UC-35 | EP-01's request, a new trip, with `X-Request-ID: cf-15` | Exactly one line at INFO from the logger `trips`, carrying a time, the level and `cf-15`, whose message has the form of row 15: `trip start="Dallas, TX" finish="Houston, TX" stop_cost=10 miles=… stops=… total=… routing_calls=1 cache_hit=false own_ms=…`. As numbers, `miles` equals the response's `summary.distance_miles` (990.0), `stops` its `summary.stops` (3), `total` its `summary.total_fuel_cost`, and `own_ms` its `meta.timings_ms.own` |
+| CF-16 | UC-36 | `.env.example` | Names `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_NUM_PROXIES`, `DATABASE_URL`, `REDIS_URL`, `ROUTING_SERVERS`, `WEB_CONCURRENCY`, `LOG_LEVEL`, `API_PORT`, `POSTGRES_PORT`, `REDIS_PORT` and `BIND_ADDRESS`, and says for each whether Compose or the API reads it (Q0a-06). It holds no key or token |
+| CF-17 | UC-36 | `.gitignore` and `.dockerignore`, asked about `.env`, `.env.local`, `.env.production` and `.env.example` | The first three are ignored by both files; `.env.example` by neither (Q0a-12) |
+| CF-34 | UC-39 | `ROUTING_SERVERS=" http://127.0.0.1:5000/route/v1/driving/{coords}?overview=full&geometries=geojson , ,http://127.0.0.1:5001/routed-car/route/v1/driving/{coords}?overview=full&geometries=geojson "` (spaces round the entries, and an empty entry between them) | Exactly the two templates, without the spaces, in that order: entries are trimmed and empty ones dropped (row 21) |
+| CF-35 | UC-39 | `ROUTING_SERVERS` set to the empty text; then to `"   "` (spaces only); then to `" , "` | Empty, and spaces only: the two public servers, as when it is not set. `" , "`: the settings refuse to load with `ImproperlyConfigured`, its message containing `ROUTING_SERVERS`, because a value was given and no entry is left (row 21) |
+| CF-36 | UC-35 | EP-01's request twice; then EP-15's request (an unknown place) | The repeat logs one INFO line from `trips` as in CF-15, with `routing_calls=0` and `cache_hit=true`: every 200 is logged, cache hits included. EP-15's logs one line at WARNING containing `unknown_place` and none of `miles=`, `stops=` or `total=` (row 15). EP-33's `internal_error` is logged once, in full, at ERROR, with no WARNING line (architecture section 18) |
+
+Against the stack: architecture section 18 ("Services", "Start order", "Stopping", "Images"), NFR-19, NFR-22 and NFR-25, and rulings Q0a-02, Q0a-06, Q0a-11, Q0a-21 and Q0a-25. CF-27, CF-28 and CF-33 use the ordinary stack, CF-27 and CF-28 with a Compose override of `ROUTING_SERVERS`.
+
+| ID | UC | Input | Expected | Actual | Result |
+|---|---|---|---|---|---|
+| CF-18 | UC-31 | `docker compose config`, no variable set | Published: `web` 8000 on 127.0.0.1; `db` 5432 on 127.0.0.1; `redis` 6379 on 127.0.0.1. `api` and `setup`: none. `api` receives `DATABASE_URL` naming host `db`, `REDIS_URL` naming host `redis`, and `DJANGO_NUM_PROXIES` 1. `db`, `redis`, `api` and `web` have `restart: unless-stopped` (Q0a-11). `api`'s stop grace period is 30 s or more | | |
+| CF-19 | UC-36 | `docker compose config` with `API_PORT=8080`, `POSTGRES_PORT=5433`, `REDIS_PORT=6380` and `BIND_ADDRESS=0.0.0.0` | `web` 8080 on 0.0.0.0; `db` 5433 and `redis` 6380, both still on 127.0.0.1 | | |
+| CF-20 | UC-36 | A `.env` holding `DJANGO_DEBUG=1`, `LOG_LEVEL=DEBUG`, `WEB_CONCURRENCY=3` and `DJANGO_ALLOWED_HOSTS=api.example`; `docker compose config` | `api`'s environment holds those four values: Compose passes each variable through (Q0a-06) | | |
+| CF-21 | UC-36 | `docker compose config`: dependencies and health checks | `setup` waits for `db` healthy; `api` for `setup` completed successfully and for `redis` started, not healthy; `web` for `api` healthy. Health checks: `db` `pg_isready -h 127.0.0.1`; `redis` a ping; `api` a request to `/api/v1/health/` with a 5 s timeout and 6 retries; `web` a request for the viewer's page | | |
+| CF-22 | UC-36 | From `docker compose down -v`: `docker compose up --build -d`, with `docker compose events` recorded | `db` is healthy before `setup` starts; `setup` exits 0 before `api` starts; `api` is healthy before `web` starts | | |
+| CF-23 | UC-36 | The logs of CF-22 | `setup`: the migrations, then the loader's counts ending with 6,626 saved, then exit code 0. `api`: no migration and no loader count, in either worker | | |
+| CF-24 | UC-36 | A Compose override giving `setup` a `DATABASE_URL` that names a database that does not exist; `docker compose up -d` | `setup` exits with a code other than 0; `api` and `web` are not started | | |
+| CF-25 | UC-33 | The stack running; `docker compose stop redis`; `docker compose restart api` | `api` starts and becomes healthy without Redis; `GET /api/v1/health/` reports `cache` `fallback` | | |
+| CF-26 | UC-36 | `docker compose down`, then `docker compose up -d` | `setup` runs again and replaces the table: 6,626 stations, not 13,252; health reports `stations` 6626 | | |
+| CF-27 | UC-36 | `ROUTING_SERVERS` pointed at a server that answers with the `dal_hou` recording after 4 s; P08's request through nginx; `docker compose stop api` 1 s after it is sent | The request ends with 200 and its plan (distance_miles 238.1), not a cut connection. The `api` container exits after that answer, and within 30 s of the stop | | |
+| CF-28 | UC-30 | `ROUTING_SERVERS` pointed at two servers that accept the connection and never answer; the requests of P01, P06, P07, P08, P09, P10, P11 and P13, none cached, sent at once, so that they hold every request slot | `api` is never reported unhealthy while they run: the health check's 5 s timeout and 6 retries outlast them (Q0a-25). Each trip ends with 502 `routing_unavailable`, reason `timeout`; health then answers 200 | | |
+| CF-29 | UC-36 | The `api` image: its Dockerfile; inside a running container, the files under `/app`, the user, and an attempt to create `/app/x` | Built in stages: the Dockerfile has more than one `FROM`. No `uv` binary, and no `web/`, `docs/` or `tests/` directory: neither the tests nor the recordings, which the test image holds (row 23). The process runs as a user other than root, and creating `/app/x` fails with permission denied (NFR-25) | | |
+| CF-30 | UC-36 | `web/node_modules` present in the clone; the `api` image built | The image holds no `node_modules` directory | | |
+| CF-31 | UC-36 | Every `FROM` line of the Dockerfiles and every `image:` of the Compose files | Each names its image by digest, `@sha256:…` (Q0a-21) | | |
+| CF-32 | UC-31 | The processes inside the running `api` container | One gunicorn master and two worker processes (NFR-19) | | |
+| CF-33 | UC-36 | The repository cloned into an empty folder; no `.env`; `docker compose up --build -d`; then through nginx `GET /api/v1/health/`, `GET /` and `GET /api/v1/route/?start=Chicgo, IL&finish=Houston, TX` | `db`, `redis`, `api` and `web` running; `setup` exited 0. Health: 200 `{"status": "ok", "stations": 6626, "cache": "redis"}`. `/`: 200, the viewer's page. The route: 400 `unknown_place` in the standard shape, from the API through nginx. `api` has no published port. Nothing asks for an account, a key or a `.env` (acceptance check 11) | | |
+
+### 9.3 Cache
+
+Architecture section 10, D-15, D-16, D-22 and NFR-18. The Redis tests run against the live Redis's database 15, and against the refusing, silent and switchable Redis of 9.1. The request is EP-01's unless stated. "At T + 30 s" means with the clock moved, not waited for.
+
+| ID | UC | Input | Expected |
+|---|---|---|---|
+| CA-01 | UC-32 | Two processes on the live Redis. A sends the request; then B sends it | A: routing_calls 1, cache_hit false. B: routing_calls 0, cache_hit true, its fake not called; body without meta identical to A's |
+| CA-02 | UC-32 | As CA-01, but B sends the request with `stop_cost=0` | B: routing_calls 0, cache_hit false: the road is shared |
+| CA-03 | UC-32 | A caches the answer with `CACHE_KEY_VERSION` n; B, the same code with n + 1, sends the request | B: routing_calls 1, cache_hit false. Nothing cached under version n is used |
+| CA-04 | UC-32 | The answer cached. The mile-700 station re-priced from 3.20 to 3.15 in the table, the index rebuilt, and the request sent again. Then the index rebuilt with no change, and the request sent again | After the price change: routing_calls 0 (the road's key holds no fingerprint), cache_hit false, and the mile-700 stop's price_per_gallon 3.15. After the rebuild with no change: cache_hit true: the same data gives the same fingerprint |
+| CA-05 | UC-32 | A caches the answer and ends; a new process C, with the same code and data, sends the request | C: cache_hit true, routing_calls 0: the answer outlives the process |
+| CA-06 | UC-33 | One process on the refusing Redis; the request twice | Both 200. First: routing_calls 1, body without meta identical to the same request on the in-memory cache. Second: cache_hit true, from the process's own memory |
+| CA-07 | UC-33 | One process on the silent Redis, the fake answering at once; the request, timed. The same request timed in a process on the live Redis, up | 200. Its round trip is no more than 0.5 s longer than the one with Redis up (NFR-18, row 14) |
+| CA-08 | UC-33 | The silent Redis; 20 requests within 30 s, new trips and repeats | All 200. Requests 2 to 20 make no connection to it and add no time |
+| CA-09 | UC-33 | The silent Redis; the process falls back at time T. Requests at T + 1 s, T + 29 s, T + 30 s, T + 59 s and T + 60 s | No connection at T + 1 s or T + 29 s; one at T + 30 s, which fails; none at T + 59 s; one at T + 60 s |
+| CA-10 | UC-33 | Process A on the switchable Redis, switched off: A falls back at T. Switched on; B caches the answer in the Redis; A sends the request at T + 30 s | A: cache_hit true, from Redis. A logs one line saying it is back on Redis; health from A reports `redis` |
+| CA-11 | UC-33 | The switchable Redis switched off; 10 requests within 30 s; one at T + 30 s, whose try fails; switched on, one request at T + 60 s; switched off again, one request | One WARNING when the process falls back; nothing for the 10 requests or the failed try; one line when it returns; one new WARNING for the second outage |
+| CA-12 | UC-33 | Two processes on the switchable Redis; switched off; each answers 5 requests | Two WARNING lines in all, one from each process: each worker logs one warning (acceptance check 13) |
+| CA-13 | UC-33 | `REDIS_URL` unset; the request twice | Second: cache_hit true. The live Redis receives no connection; no warning is logged; health reports `memory` |
+| CA-14 | UC-34 | Two processes on the live Redis; one client address; 30 routing-free requests to A, 30 to B, then 1 to A | The last is 429 `rate_limited`: the counters are shared |
+| CA-15 | UC-34 | Two processes on the refusing Redis; one client address; 61 routing-free requests to A; then 1 to B | A's 61st is 429: the limit still holds during the outage. B's is not 429: during the outage each process counts on its own (D-16) |
+| CA-16 | UC-19 | A key `canary` placed in database 0 of the live Redis; then the Redis tests | `canary` is still in database 0. No database other than 15 holds a key the tests wrote |
+| CA-17 | UC-19 | `REDIS_URL` set to the live Redis in the environment; `uv run pytest` | Every test outside the Redis tests uses the in-memory cache: database 0's `canary` survives the fixture that clears the cache between tests |
+| CA-18 | UC-32 | Live Redis; the request | The road's and the answer's keys each have a time to live of at most 86,400 s and more than 86,000 s |
+| CA-19 | UC-32 | Two identical new requests released together; the fake routing service holds each answer 0.5 s | Both 200; the fake counted 2 calls: both are routed (D-22) |
+| CA-24 | UC-33 | The cache's Redis client settings; then one cache read against the silent Redis, timed, and its connections counted | Connections time out after 0.1 s, commands after 0.25 s, with no retry (row 14). The read gives up no sooner than 0.25 s, the command timeout, and no later than 0.5 s, row 14's limit, then falls back; the silent Redis received one connection: the read was not retried |
+
+Against the stack:
+
+| ID | UC | Input | Expected | Actual | Result |
+|---|---|---|---|---|---|
+| CA-20 | UC-32 | The end-to-end stack, Redis just started, the stand-in's log reset; P08's request through nginx, then 20 times more | Each of the 20: cache_hit true, routing_calls 0. The stand-in's log: 1 route request, matched to `dal_hou` (acceptance check 12) | | |
+| CA-21 | UC-33 | The end-to-end stack; P08's request; `docker compose stop redis`; 10 requests, P08's and P06's in turn; `GET /api/v1/health/` 4 times; `docker compose logs api` | Every answer 200. Health 200 with `cache` `fallback`. Each worker that answered since the stop has logged exactly one fallback warning; none has logged two | | |
+| CA-22 | UC-33 | Continuing CA-21: `docker compose start redis`; 31 s later, health 4 times; then P06's request and 20 repeats | Health reports `redis`. The 20 repeats: cache_hit true, routing_calls 0: the shared cache is back (acceptance check 13) | | |
+| CA-23 | UC-33 | `docker compose exec redis redis-cli CONFIG GET` for `maxmemory`, `maxmemory-policy`, `save` and `appendonly` | `268435456` (256 MB), `allkeys-lru`, empty, `no`: memory capped, the least recently used key evicted, nothing kept on disk | | |
+
+### 9.4 Health, schema and docs addresses
+
+Architecture section 11 ("Other addresses"), FR-19, FR-20 and D-20. Unless stated, the small CSV is loaded and `REDIS_URL` is unset.
+
+| ID | UC | Input | Expected |
+|---|---|---|---|
+| HS-01 | UC-30 | `GET /api/v1/health/` | 200, body exactly `{"status": "ok", "stations": 4, "cache": "memory"}` |
+| HS-02 | UC-30 | The real CSV loaded; health | 200; `stations` 6626 |
+| HS-03 | UC-30 | `REDIS_URL` set to the live Redis; health | 200; `cache` `redis` |
+| HS-04 | UC-30 | `REDIS_URL` set to the refusing Redis; health | 200; `cache` `fallback`; one fallback warning logged |
+| HS-05 | UC-30 | One process on the switchable Redis: health; switched off at T; health; switched on; health at T + 10 s and at T + 30 s, the clock moved | `redis`; then `fallback` at once, as health's own cache read finds Redis gone; `fallback` at T + 10 s; `redis` at T + 30 s |
+| HS-06 | UC-30 | Empty station table; health; then `load_stations --csv <small CSV>`; health | 503, body `{"error": {"code": "stations_not_loaded", "message": "…", "details": {}}}`. Then 200 with `stations` 4, with no restart |
+| HS-07 | UC-30 | The index not yet loaded, the small CSV in the table; health twice | Both 200 with `stations` 4. The first reads the database once, loading the index; the second makes no database query |
+| HS-08 | UC-30 | 100 health requests from one client within a minute; then 61 routing-free requests; then health | All 100 health answers 200. Routing-free requests 1 to 60 are not 429 and the 61st is: health was not counted. The last health answer 200: health is never limited |
+| HS-09 | UC-29 | 60 routing-free requests from one client within a minute; then `GET /api/v1/schema/`; then `GET /api/v1/docs/` | Both 429 `rate_limited` in the standard shape: only health is exempt |
+| HS-10 | UC-30 | POST to `/api/v1/health/`, to `/api/v1/schema/` and to `/api/v1/docs/` | 405 `method_not_allowed` each, in the standard shape |
+| HS-11 | UC-29 | `GET /api/v1/schema/` | 200, an OpenAPI document whose `openapi` is `3.0.3`; not the catch-all's 404 |
+| HS-12 | UC-29 | HS-11's document: the GET operation on `/api/v1/route/` | Parameters: `start` and `finish` in the query, required, text; `stop_cost` in the query, optional, a number from 0 to 100, default 10 |
+| HS-13 | UC-29 | Same operation: its 200 response | A schema naming `summary`, `warnings`, `assumptions`, `fuel_stops`, `map` and `meta`; EP-01's 200 body validates against it |
+| HS-14 | UC-29 | Same operation: its error responses; and the document's opening text (`info.description`) | Error responses for exactly 400, 422, 429, 500, 502 and 503, each with the standard shape, naming every code it can carry: 400 `invalid_request`, `unknown_place`; 422 `outside_coverage`, `route_leaves_usa`, `no_route`, `no_fuel_plan`; 429 `rate_limited`; 500 `internal_error`; 502 `routing_unavailable`; 503 `stations_not_loaded`, `api_unavailable`, the last described as sent by the proxy when the API cannot be reached. No 404 and no 405 on the route: the opening text describes `not_found` and `method_not_allowed` instead (row 18). EP-15's 400 body validates against the 400 schema |
+| HS-15 | UC-29 | `uv run python manage.py spectacular --validate --fail-on-warn` | Exit code 0; no error, no warning |
+| HS-16 | UC-29 | The committed `docs/openapi.yaml` against the document generated from the code; then with one parameter's description changed in `trips/schema.py` alone | Equal; then the test fails |
+| HS-17 | UC-29 | `GET /api/v1/docs/` | 200, an HTML page whose script is loaded from a CDN at one exact version: its address names a version number, not `latest` |
+
+Against the stack:
+
+| ID | UC | Input | Expected | Actual | Result |
+|---|---|---|---|---|---|
+| HS-18 | UC-29 | `http://127.0.0.1:8000/api/v1/docs/` in a browser that can reach the CDN | The page renders: `GET /api/v1/route/` is listed with its three parameters (acceptance check 15) | | |
+| HS-19 | UC-30 | The ordinary stack: `GET http://127.0.0.1:8000/api/v1/health/` | 200, `{"status": "ok", "stations": 6626, "cache": "redis"}` (acceptance check 15) | | |
+
+### 9.5 Host checking and middleware
+
+Architecture sections 11 and 12, D-21, and rulings Q0a-03, Q0a-04 and Q0a-24. The Django test client with the `Host` the case names; the default settings unless stated.
+
+| ID | UC | Input | Expected |
+|---|---|---|---|
+| HM-01 | UC-31 | `GET /api/v1/health/` with `Host` `localhost`, `127.0.0.1`, `[::1]` and `127.0.0.1:8000` | 200 each |
+| HM-02 | UC-31 | `Host: evil.example` on `/api/v1/route/?start=Dallas, TX&finish=Houston, TX`, on `/api/v1/health/` and on `/nowhere`, with `DJANGO_DEBUG` off and on | 400 each, `Content-Type: application/json`, body `{"error": {"code": "invalid_request", "message": "…", "details": {}}}`, never an HTML page. Fake not called |
+| HM-03 | UC-31 | `DJANGO_ALLOWED_HOSTS=api.example`; health with `Host: api.example`; then with `Host: localhost` | 200; then 400 `invalid_request` with empty details |
+| HM-04 | UC-17 | `GET /api/v1/route/?start=Dallas, TX&finish=Houston, TX`; then `GET /api/v1/route?start=Dallas, TX&finish=Houston, TX` | 200 each, no redirect; bodies without meta identical. The slash redirect stays off with `CommonMiddleware` in place |
+| HM-05 | UC-17 | `GET /api/v1/routes` and `GET /api/v1/routes/` | 404 `not_found` each, not a redirect |
+| HM-06 | UC-31 | `MIDDLEWARE`, `APPEND_SLASH`, and the error handlers of `config/urls.py` | `MIDDLEWARE` holds `django.middleware.security.SecurityMiddleware` and `django.middleware.common.CommonMiddleware`; `APPEND_SLASH` is false. `handler400` is set to a view answering in the error shape; `handler403` is not set, as nothing in the API can answer 403 (row 27) |
+| HM-07 | UC-34 | `DJANGO_NUM_PROXIES=1`; 60 routing-free requests with `X-Forwarded-For: 203.0.113.1`; then one with `203.0.113.2`; then one more with `203.0.113.1` | The `203.0.113.2` request is not 429: another client, another bucket (Q0a-04). The last `203.0.113.1` request is 429 |
+| HM-08 | UC-34 | `DJANGO_NUM_PROXIES` unset; 61 routing-free requests, each with a different `X-Forwarded-For` | Request 61 is 429: with no proxy trusted the header is ignored, as in EP-34 |
+| HM-09 | UC-31 | The body text of a 404 `not_found` and of a 400 `invalid_request` | Both in one compact form: no space after any `:` or `,` outside strings (Q0a-24) |
+| HM-10 | UC-31 | The API alone, with no nginx: EP-01's 200, `/nowhere`'s 404, EP-15's 400 and `/api/v1/health/` | Each answer carries, from Django, exactly one `X-Content-Type-Options: nosniff`, one `Referrer-Policy: strict-origin-when-cross-origin` and one `X-Frame-Options: DENY` (row 19) |
+
+### 9.6 The front door, through nginx
+
+Architecture section 18 ("The front door"), NFR-16, NFR-19, NFR-23, D-17, D-23 and D-24. Every request is sent through nginx, on the end-to-end stack.
+
+| ID | UC | Input | Expected | Actual | Result |
+|---|---|---|---|---|---|
+| PX-01 | UC-31 | `GET http://127.0.0.1:8000/api/v1/route/?start=Dallas, TX&finish=Houston, TX` (P08) | 200 with the plan: labels `Dallas, TX` and `Houston, TX`, distance_miles 238.1 (`dal_hou`), routing_calls 1 | | |
+| PX-02 | UC-31 | P01's request with `Accept-Encoding: gzip`; then without it | With it: `Content-Encoding: gzip`, and the body unpacks to the full JSON answer and is smaller than it. Without it: no `Content-Encoding` | | |
+| PX-03 | UC-31 | `GET /`, and each JavaScript and CSS file under `/assets/` that the page loads, with `Accept-Encoding: gzip` | `Content-Encoding: gzip` on each (NFR-23) | | |
+| PX-04 | UC-35 | P08's request with no `X-Request-ID`, twice; then once with `X-Request-ID: client-1`; `docker compose logs api` | Each response carries a non-empty `X-Request-ID`, made by nginx; the first two differ. The third's is not `client-1`: nginx replaces a client's own (row 16). The API's log lines for each request carry that request's value, and none carries `client-1` | | |
+| PX-05 | UC-31 | `/`; one file under `/assets/`; P08's request; `/api/v1/health/`; `/api/v1/schema/`; `/api/v1/docs/`; `/nowhere`; N03's request; a 429 after 60 routing-free requests; `/assets/missing.js`; and, with `api` stopped, P08's request | Every answer, error answers included, carries `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` and `X-Frame-Options: DENY`, each exactly once. The API's answers carry them from Django (HM-10); the viewer's files and nginx's own answers from nginx, which adds none to an answer it passes through (row 19) | | |
+| PX-06 | UC-31 | `/`, `/?start=New York, NY&finish=Los Angeles, CA` and `/api/v1/docs/` | `/` and `/?start=…` carry `Content-Security-Policy`, and its text names `tiles.openfreemap.org` and `gibs.earthdata.nasa.gov`. `/api/v1/docs/` carries none. The policy's full text is recorded in Phase 12 (row 20) | | |
+| PX-07 | UC-34 | 61 routing-free requests from one client within a minute, the n-th with `X-Forwarded-For: 198.51.100.n` | Requests 1 to 60: 400 `invalid_request`. Request 61: 429 `rate_limited` in the standard shape, details.retry_after_seconds above 0 (acceptance check 14) | | |
+| PX-08 | UC-34 | Client A, as in PX-07, reaches 429; then client B, at another address, sends 61 routing-free requests with `Host: 127.0.0.1:8000` | B's requests 1 to 60: 400, none 429: another client, another bucket (Q0a-04). B's 61st: 429 | | |
+| PX-09 | UC-25 | `docker compose stop api`; then P08's request, `/api/v1/health/`, `/api/v1/schema/` and `/nowhere`; then `/` | Each of the first four: 503, `Content-Type: application/json`, body `{"error": {"code": "api_unavailable", "message": "…", "details": {}}}`, never an HTML page (D-24). `/`: 200, the viewer's page | | |
+| PX-10 | UC-25 | `docker compose pause api`; P08's request, timed; then `docker compose unpause api` | 503 `api_unavailable` in the standard shape with empty details, answered no sooner than 30 s after the request | | |
+| PX-11 | UC-31 | N03's request; then the stand-in's service stopped and P09's request, not yet cached. Each also sent from inside the stack's network straight to `api` | N03: 400 `unknown_place`, the body byte for byte as the API sent it. P09's: 502 `routing_unavailable`, reason `error`, as the API sent it, not replaced by `api_unavailable` | | |
+| PX-12 | UC-31 | `/nowhere` and `/api/v2/route/`; then `/assets/missing.js`, a file the viewer does not have | The first two: 404 `not_found` in the standard shape, from the API, as in release 1.0. The third: 404, `Content-Type: application/json`, body `{"error": {"code": "not_found", "message": "…", "details": {}}}`, written by nginx (row 17) | | |
+| PX-13 | UC-34 | `docker compose ps` and `docker compose port api 8000` | `api` has no published port; the only published ports are those of CF-18 | | |
+| PX-14 | UC-31 | A request whose address is `/api/v1/route/?start=` followed by 100,000 `a` | 400, body `{"error": {"code": "invalid_request", "message": "…", "details": {}}}`, written by nginx | | |
+| PX-15 | UC-31 | P08's request with `Host: evil.example`; then with `Host: localhost:8000` | 400 `invalid_request` with empty details, from the API: nginx passed the client's `Host` on. Then 200 | | |
+| PX-16 | UC-31 | P08's and N03's requests, each with `Origin: http://other.example` | No `Access-Control-` header on either: the viewer is on the same origin (D-17) | | |
+| PX-17 | UC-31 | `http://127.0.0.1:8000/` and P08's request | 200 each, not a redirect to HTTPS; no `Strict-Transport-Security` header (D-23) | | |
+| PX-18 | UC-21 | `GET /` and `GET /?start=New York, NY&finish=Los Angeles, CA&stop_cost=10` | 200 each, `text/html`, the same viewer page | | |
+
+### 9.7 The stand-in routing server
+
+`scripts/fake_osrm.py` and `tests/test_fake_osrm.py`. The stand-in is started on a free local port with the recordings of 9.1 unless stated; `<base>` is its address. Path coordinates are `lng,lat;lng,lat`, and every route request carries the query `?overview=full&geometries=geojson`.
+
+| ID | UC | Input | Expected |
+|---|---|---|---|
+| SI-01 | UC-39 | `GET <base>/route/v1/driving/-96.80439,32.790439;-95.3657,29.7652` | 200; the body is `dal_hou.json.gz` unpacked, byte for byte |
+| SI-02 | UC-39 | `GET <base>/routed-car/route/v1/driving/-96.80439,32.790439;-95.3657,29.7652` | The same 200 and body as SI-01: both public paths are served |
+| SI-03 | UC-39 | The reverse: `GET <base>/route/v1/driving/-95.3657,29.7652;-96.80439,32.790439` | 400, body with `code` `NoRoute`: Houston to Dallas was not recorded. The routing client reads it as no road, as in RT-08 |
+| SI-04 | UC-39 | A pair far from every recording: `GET <base>/route/v1/driving/0,0;1,1` | 400 with `code` `NoRoute` |
+| SI-05 | UC-39 | Finish at `dal_hou`'s second waypoint; start 29 miles due north of its first waypoint, `-96.797185,33.197306`; then 31 miles north, `-96.797185,33.226252` | 200 with `dal_hou`; then 400 `NoRoute`: both ends must lie within 30 miles of a recording's |
+| SI-06 | UC-39 | `GET <base>/route/v1/driving/abc`; `GET <base>/route/v1/driving/-96.80439,32.790439` (one point); `GET <base>/route/v1/driving/-96.80439,32.790439;north,south` | 400 with `code` `InvalidUrl`, each |
+| SI-07 | UC-39 | `POST <base>/_reset`; SI-01's request; SI-03's request; `GET <base>/_requests`; `POST <base>/_reset`; `GET <base>/_requests` | First log, as JSON (row 22): `{"count": 2, "requests": [{"path": …, "start": [-96.80439, 32.790439], "finish": [-95.3657, 29.7652], "matched": "dal_hou", "status": 200}, {"path": …, "start": [-95.3657, 29.7652], "finish": [-96.80439, 32.790439], "matched": null, "status": 400}]}`, where the first `path` begins `/route/v1/driving/-96.80439,32.790439;-95.3657,29.7652` and the second `/route/v1/driving/-95.3657,29.7652;-96.80439,32.790439`. After the reset: `{"count": 0, "requests": []}` |
+| SI-08 | UC-39 | `GET <base>/_health` | 200 |
+| SI-09 | UC-39 | `ROUTING_SERVERS` set to `<base>/route/v1/driving/{coords}?overview=full&geometries=geojson`; `fetch_route` from Dallas (32.790439, −96.80439) to Houston (29.7652, −95.3657) | A `Route` with distance_miles 238.1, the recording's distance; calls 1 |
+| SI-10 | UC-39 | A folder holding only a copy of `dal_hou.json.gz` named `x.json.gz`; the stand-in started with `--roads` naming it; SI-01's request; then New York to Los Angeles, `-73.996705,40.74838;-118.247896,33.973093` | 200 with that recording; then 400 `NoRoute`. Recordings are found in the folder, not named in the code |
+| SI-11 | UC-39 | The stand-in started with no option | It listens on port 5000 on every interface (`0.0.0.0`) and reads `tests/fixtures/roads`: SI-01's request on port 5000 answers 200 |
+
+### 9.8 End to end
+
+Architecture section 13 ("Beyond the suite") and NFR-26. The end-to-end stack is started with `docker compose -f docker-compose.yml -f docker-compose.e2e.yml up --build -d`. Before each case Redis is freshly started and the stand-in's log reset, unless stated.
+
+| ID | UC | Input | Expected | Actual | Result |
+|---|---|---|---|---|---|
+| EE-01 | UC-39 | The end-to-end stack started; its `config` for `api` and `fake-osrm`; health through nginx | Every service running, `setup` exited 0. `api`'s `ROUTING_SERVERS` is the stand-in alone, at the service `fake-osrm`, with no public server in it. `fake-osrm` runs from the test image, which holds the recordings (row 23). Health 200 | | |
+| EE-02 | UC-39 | `npx newman run docs/postman/milemarker.postman_collection.json --folder "1. Demo" --env-var base_url=http://127.0.0.1:8000` | Exit code 0, every check passing. The stand-in's log: exactly 1 route request, matched to `nyc_la`: the folder's four requests are one trip, routed once and then answered from the cache | | |
+| EE-03 | UC-39 | The whole collection: `npx newman run docs/postman/milemarker.postman_collection.json --env-var base_url=http://127.0.0.1:8000` | Exit code 0, every check passing. The stand-in's log: `count` 8, from P01, P05, P06, P08, P10, P11, N11 and N12, with `matched` `nyc_la`, `sea_mia`, `dal_hou` and `det_buf` for P01, P06, P08 and N11, and for P05, P10, P11 and N12 the recording added for each in Phase 10 (row 1); no `matched` is null. The other 6 requests make none (acceptance check 17) | | |
+| EE-04 | UC-39 | `scripts/live_check.py --routing-host fake-osrm` against `http://127.0.0.1:8000`, limited to the cases whose roads are recorded or need none: P01 to P11, P14 to P16, N01 to N22, N24 to N26 | Each meets its expected result in section 3, and every 200 obeys R1 to R17, R15 accepting `fake-osrm` (row 2). The stand-in's log: `count` 11, from P01, P05, P06, P07, P08, P09, P10, P11, N11, N12 and N22; no `matched` is null | | |
+| EE-05 | UC-39 | The viewer's browser tests (section 9.11) against `http://127.0.0.1:8000` | Every test passes (acceptance check 17) | | |
+| EE-06 | UC-39 | Inside the `api` container: a TCP connection to `router.project-osrm.org` port 443, opened without sending anything; then one to the stand-in's port | The first fails within 5 s: the name does not resolve, or there is no route. The second opens. The API has no route to the internet (acceptance check 17) | | |
+| EE-07 | UC-39 | The collection's checks on a 200; then P01's request answered by a stub at `base_url` with P01's answer altered so that stop 1 buys every gallon and the other stops buy none (Q0a-01) | Each 200's checks walk the stops: no leg, nor the last stop to the finish, over 500 miles; the tank between 0 and 50 gallons; mile markers increasing; each cost equal to gallons × price to the cent; one map Point per stop. The altered answer fails P01's checks | | |
+| EE-08 | UC-21 | The ordinary stack, with the public routing servers: P01's request through nginx; then the viewer on `/?start=New York, NY&finish=Los Angeles, CA` | One routing call. P01's expected result in section 3; meta.routing_server `router.project-osrm.org` or `routing.openstreetmap.de`; R1 to R17 hold. The viewer plays it to the end with VB-04 to VB-06 holding. It spends one of the remaining public routing calls | | |
+
+### 9.9 The viewer: pure calculations
+
+The timeline of architecture section 19 ("Its parts"): pure functions, with no React, no map library and no network, run by the viewer's unit tests. The inputs are test line T, line M and viewer answer V1. `p` is the head's progress: the fraction of the line's drawn length, in Web Mercator, behind the boundary, from 0 to 1. It is 0 until 8 s, `(t − 8) ÷ 7` from 8 s to 15 s, and 1 after (row 4). Between two line points, drawn length and road miles are both interpolated linearly (row 6). A stop is "shown" when its marker, its card and its cost in the fuel counter are; stop 1 is shown from 8 s (row 5). Numbers compare within 1e-9 unless stated; money compares exactly, to the cent.
+
+| ID | UC | Input | Expected |
+|---|---|---|---|
+| VT-01 | UC-21 | Line T; the head's position for p = 0, 0.25, 3/7, 0.5 and 1 | (0, 0); (1.75, 0); (3, 0); (3, 0.5); (3, 4) |
+| VT-02 | UC-21 | Line T; the drawn position of stop 1 at A, of stop 2 at B, and of the finish at C | 0; 3/7 (0.428571…); 1. Stop 2's is not 0.5, the fraction its mile marker gives (100.0 of 200.0) |
+| VT-03 | UC-21 | Line T; p = 0.42, 3/7 and 0.45 | Stop 2 not shown at 0.42; shown at 3/7 and at 0.45: it appears as the head reaches it on the drawn line, before p = 0.5 |
+| VT-04 | UC-21 | A line of five points, (0, 0), (1, 0), (2, 0), (3, 0) and (4, 0); stop 1 at the first, stops 2, 3 and 4 at the second, third and fourth; p rising from 0 to 1 in steps of 0.01 | Stops 2, 3 and 4 appear in that order, at p = 0.25, 0.5 and 0.75, each once; none disappears as p rises |
+| VT-05 | UC-21 | Line T; road miles at the head for p = 0, 0.25, 3/7, 0.5 and 1 | 0.0; 58.33 (±0.01); 100.0, stop 2's mile_marker exactly; 112.5; 200.0, distance_miles exactly |
+| VT-06 | UC-21 | Line T; p from 0 to 1 in steps of 0.001 | Neither the road miles nor the fuel counter ever falls as p rises |
+| VT-07 | UC-21 | Line T; the fuel counter at t = 7.9 s, 8 s (p = 0), 9.4 s (p = 0.2), 11 s (p = 3/7) and 15 s (p = 1) | 0.00; 126.81, as stop 1 appears at 8 s; 126.81; 268.04; 268.04, equal to total_fuel_cost. Exactly 268.04, not the 268.03999999999996 that adding the two costs as binary fractions gives |
+| VT-08 | UC-21 | Time to progress, for t = 0, 8, 9.4, 11.5, 15 and 16.5 s | p = 0, 0, 0.2, 0.5, 1 and 1: linear between 8 s and 15 s (row 4) |
+| VT-09 | UC-21 | V1 at t = 16.5 s, the end, where Skip leads | Distance counter 853.2 and fuel counter 268.04, the API's figures; both stops shown |
+| VT-10 | UC-21 | V1 at t = 0, where Replay leads; and at t = 7.9 s | Each: distance counter 0.0 and fuel counter 0.00; no part of the route drawn (p = 0); no stop shown, stop 1 included (row 5) |
+| VT-11 | UC-21 | V1's state at t = 12 s computed directly, and reached by scrubbing from t = 16.5 s back to 12 s | The two states are equal |
+| VT-12 | UC-21 | A frame at t = 10 s for a line of 10 points, and for one of 5,600 points, with the map module replaced by a stand-in that records what it is asked | The stand-in receives the same three small updates per frame for both lines, and the line's coordinates once per trip, not per frame (NFR-29) |
+| VT-13 | UC-21 | Line T at the moments t = 10 s, 11 s, 12.75 s and 15 s | t = 10 s (p = 2/7): head at (2, 0), road miles 66.67 (±0.01), fuel counter 126.81, stop 2 not shown. t = 11 s (p = 3/7): head at (3, 0), 100.0, 268.04, stop 2 shown. t = 12.75 s (p = 4.75/7): head at (3, 1.75), 143.75, 268.04. t = 15 s: head at (3, 4), 200.0, 268.04 |
+| VT-14 | UC-21 | Line M: the two running totals at its three points; the drawn position of a stop at `[0, 60]`; the road miles at p = 0.5 and p = 0.95 | Road miles, by the great-circle formula and scaled so the last is distance_miles: 0.0, 3,692.578211, 4,000.0 (±1e-6). Drawn length in Web Mercator: 0, 0.209600359, 0.237378137 (±1e-9). The stop's drawn position is 0.882981 (±1e-6), though its mile fraction is 0.923145, so it appears at t = 14.180866 s (±1e-6). Road miles at p = 0.5: 2,090.972887; at p = 0.95: 3,868.644619 (±1e-6) (row 6) |
+| VT-15 | UC-21 | V1, the intro cancelled at t = 1 s | The state is the finished state of VT-09: counters 853.2 and 268.04, both stops shown (row 7) |
+
+### 9.10 The viewer: the panel and its states
+
+Component tests (architecture section 13): the panel's React components, with the map module replaced by a stand-in that records what it is asked, and the API's answer supplied by the test. Elements are found by role and by the test IDs of 9.1, and figures are compared in the formats row 9 sets. A heading's or a fixed sentence's wording is recorded in Phase 12 and not compared here.
+
+| ID | UC | Input | Expected |
+|---|---|---|---|
+| VP-01 | UC-21 | The API's answer not yet arrived | `loading` shown; no `trip-` element, no `stop-card` and no `error` |
+| VP-02 | UC-21 | V1 | `trip-distance` `853.2 mi`; `trip-stops` `2`; `trip-total` `$268.04`; `trip-lowest` `$268.04`; no `trip-warning`; `assumptions` showing V1's six values (500, 10, 50, 0, 10.0, 5), compared as numbers. Two `stop-card`s, in order. First: `stop-name` `DELTA`; `stop-place` holding `Jersey City` and `NJ`; `stop-price` `$3.239 / gal`; `stop-gallons` `39.15`; `stop-cost` `$126.81`; `stop-mile` `0.0 mi`. Second: `SHEETZ #639`; `Youngstown` and `OH`; `$3.059 / gal`; `46.17`; `$141.23`; `391.5 mi` |
+| VP-03 | UC-21 | V1 | `stop-start-note` on the first `stop-card` and on no other (Q0a-15). Its wording, that the fuel is priced at the listed station nearest the start and the stop is drawn at the start, is recorded in Phase 12 |
+| VP-04 | UC-21 | V2 | One `trip-warning`, its text exactly V2's warning |
+| VP-05 | UC-21 | V1 with stop 2's price_per_gallon 3.00733333, gallons 2.50 and cost 7.52; and with total_fuel_cost set to 999.99 | Stop 2's `stop-price` `$3.00733333 / gal`, every digit as sent; `stop-gallons` `2.50`; `stop-cost` `$7.52`. `trip-total` `$999.99`: the panel shows the API's figure and does not add the costs itself |
+| VP-06 | UC-24 | Each of the 13 error bodies of 9.1 | Each: `error` shown, holding an element of role `heading` and `error-message` whose text is the body's `message`, as `Message for no_route.`. The 13 headings differ from one another; their wording is recorded in Phase 12 (row 9). No `trip-` element, no `stop-card`, no route given to the map stand-in |
+| VP-07 | UC-23 | Address `/?start=Chicgo, IL&finish=Houston, TX&stop_cost=10`; the unknown_place body of N03's actual result: field `start`, suggestions `Chicago, IL`, `Cisco, IL`, `West Chicago, IL`, `North Chicago, IL`, `Cicero, IL` | Five `suggestion` links (role `link`), in that order. Each link's parameters, decoded: `start` the suggestion, `finish` `Houston, TX`, `stop_cost` `10` |
+| VP-08 | UC-23 | Address `/?start=Dallas, TX&finish=Houstn, TX`; unknown_place with field `finish` and suggestions `["Houston, TX"]` | One `suggestion` link, with `start` `Dallas, TX`, `finish` `Houston, TX`, and no `stop_cost`, as the address had none |
+| VP-09 | UC-23 | unknown_place with suggestions `[]` | `error` with its heading and `error-message`, and no `suggestion` |
+| VP-10 | UC-24 | rate_limited with details.retry_after_seconds 37 | `error` with its heading and `error-message`, and `error-retry` showing `37` |
+| VP-11 | UC-25 | The api_unavailable body (503); then a request that fails with no answer at all | First: `error` with the `api_unavailable` heading and `error-message` `Message for api_unavailable.`. Then: `error` with a heading saying the API cannot be reached, and no `error-message`, as no answer came. Neither shows a `trip-` element |
+| VP-12 | UC-21 | Address `/?start=Dallas, TX&finish=Houston, TX&stop_cost=5` | Exactly one request: `GET /api/v1/route/` on the page's own origin, with `start` `Dallas, TX`, `finish` `Houston, TX` and `stop_cost` `5`. Skip and Replay send no further request |
+| VP-13 | UC-22 | Address `/` | No request to the API. The globe, and three `example` links whose parameters, decoded, are `start` `New York, NY` and `finish` `Los Angeles, CA`; `Seattle, WA` and `Miami, FL`; `Dallas, TX` and `Houston, TX` |
+| VP-14 | UC-22 | Each state: bare, loading, V1, an error, suggestions | No `form` element, no text field and no `textarea` in any (D-19) |
+| VP-15 | UC-21 | V1; stop 2's card chosen with a click, then with the keyboard (focus and Enter) | Each time the map stand-in is asked once to fly to (41.0998, −80.6495), stop 2's position |
+| VP-16 | UC-21 | V1 | The map stand-in is given the coordinates of `map.features[0]` unchanged, once, and a marker for each stop at its `lat` and `lng` (D-2) |
+| VP-17 | UC-21 | V1, during the animation; then at its end | During: `skip`, a button named Skip. At the end: `replay`, a button named Replay, and `scrubber`, of role `slider` |
+| VP-18 | UC-24 | Address `/?start=Dallas, TX`, the API answering 400 `invalid_request` with details.fields `{"finish": ["…"]}` and message `Message for invalid_request.`; then `/?finish=Houston, TX`, answered likewise for `start`; then `/?stop_cost=5` | The first two: one request each, carrying only the parameter the address has; `error` with the `invalid_request` heading and the API's message; no `example`. The third, with neither `start` nor `finish`: no request; the globe and the three `example` links (row 8) |
+| VP-19 | UC-21 | V1 with distance_miles 2800.6 and stop 2's mile_marker 1353.6, at the end of the animation | `trip-distance` `2,800.6 mi`; stop 2's `stop-mile` `1,353.6 mi`; `counter-distance` `2,800.6 mi` and `counter-cost` `$268.04`: a thousands separator in miles (row 9) |
+
+### 9.11 The viewer in a browser
+
+Playwright, headless, through nginx on the end-to-end stack (architecture section 13). The map draws on the built-in outlines: the test answers every request to the map servers itself, as each case says, and none reaches them. A case run "to the end" waits for the animation's finished state, about 16.5 s.
+
+| ID | UC | Input | Expected | Actual | Result |
+|---|---|---|---|---|---|
+| VB-01 | UC-21 | `/?start=New York, NY&finish=Los Angeles, CA&stop_cost=10`, run to the end; map server requests refused | VB-04, VB-05 and VB-06 hold; the scrubber is shown; the finish marker is shown (acceptance check 18) | | |
+| VB-02 | UC-22 | `/?start=Seattle, WA&finish=Miami, FL`, run to the end; map server requests refused | As VB-01 | | |
+| VB-03 | UC-22 | `/?start=Dallas, TX&finish=Houston, TX`, run to the end; map server requests refused | As VB-01 | | |
+| VB-04 | UC-21 | The finished state of VB-01 to VB-03: ten route points spread along the line, projected to the screen, and the canvas pixel at each | Each pixel has the drawn route's colour, within a tolerance for smoothing: the route is drawn. The colour and the tolerance are recorded in Phase 12 (row 10) | | |
+| VB-05 | UC-21 | Same | One stop marker for each entry of `fuel_stops`, each at its stop's `lat` and `lng` | | |
+| VB-06 | UC-21 | Same; the API's answer read from the page's own request | `trip-distance`, `trip-stops`, `trip-total` and `trip-lowest`, read as numbers, equal the answer's `summary.distance_miles`, `stops`, `total_fuel_cost` and `lowest_possible_fuel_cost`; each `stop-card`'s figures equal its stop's | | |
+| VB-07 | UC-21 | VB-01's finished state, as a screenshot | Matches the stored screenshot within a tolerance. The screenshot and the tolerance are recorded in Phase 12 (row 10) | | |
+| VB-08 | UC-21 | VB-01's address; Skip at t = 2 s | The finished state at once: VB-05 and VB-06 hold, and the scrubber is shown | | |
+| VB-09 | UC-21 | VB-01's finished state; Replay | Back to the start: no stop marker at all, `counter-distance` `0.0 mi`, `counter-cost` `$0.00`. Stop 1 appears at 8 s (row 5). It plays to the end again, and no new request reaches the API | | |
+| VB-10 | UC-21 | VB-01's finished state; the scrubber dragged to its start, to its end, and to the moment the head reaches stop 3 | Start: no stop marker at all, `counter-distance` `0.0 mi`. End: the finished state. Stop 3's moment: the markers of stops 1 to 3 shown and no later one; `counter-distance` at stop 3's mile_marker | | |
+| VB-11 | UC-21 | VB-01's address; at t = 1 s, in four separate loads: a press on the map; a wheel turn over it; a touch, with touch emulated; the Escape key | Each time the trip is shown finished at once, as after Skip: VB-05 and VB-06 hold and the scrubber is shown. The camera stays where the gesture leaves it: its centre and zoom 2 s after the gesture ends are those at its end (row 7). A drag on the map then pans it | | |
+| VB-12 | UC-21 | VB-01's finished state; stop 3's card chosen | After the flight the map's centre is stop 3's position, to 3 decimals | | |
+| VB-13 | UC-26 | VB-01's address with reduced motion requested (`prefers-reduced-motion: reduce`) | Within 1 s of the answer arriving: the finished state, with VB-05, VB-06 and the scrubber. Two screenshots taken 1 s apart are identical: the camera does not move | | |
+| VB-14 | UC-27 | VB-01's address in a browser with WebGL turned off | `static-route`, the static drawing; the panel with VB-06's figures; `no-webgl`, the sentence saying why, its wording recorded in Phase 12. No `error`. `credits` names Natural Earth, and neither NASA GIBS nor OpenFreeMap (row 13) | | |
+| VB-15 | UC-28 | VB-01's address with every request to OpenFreeMap and NASA GIBS held without an answer | After 4 s the viewer goes on with the built-in outlines alone: land and state outlines are drawn; the route is drawn (VB-04); it plays to the end | | |
+| VB-16 | UC-28 | VB-01's address with the remote map's description answered by the test from a copy, and every tile request answered 500 | The failed tiles are not drawn and the outlines show beneath; it plays to the end; the panel shows no error | | |
+| VB-17 | UC-21 | Each state: bare; loading; VB-01's finished state; an error (N03's address); outlines only (VB-15); no WebGL2 (VB-14) | `credits` is on screen and expanded in each, and names the sources in use (row 13). The built-in outlines are always the bottom layer, so Natural Earth is named in every state. With the outlines alone, as in every case of this section but VB-16 and VB-27, and without WebGL2, it is the only source named. With the remote map in use (VB-27), NASA GIBS, OpenFreeMap, OpenMapTiles and OpenStreetMap are named as well. The exact wording and links are recorded in Phase 12 (FR-26) | | |
+| VB-18 | UC-21 | Keyboard only, from page load, in Playwright and by hand, in each state: bare; VB-01 during play and finished; N03's address | Tab reaches every control: the three example links, Skip, Replay, the scrubber, each stop card, each suggestion link and the credit links. Enter or Space works each; the arrow keys move the scrubber (NFR-28) | | |
+| VB-19 | UC-24 | The axe accessibility scan in each state: bare; loading; VB-01 finished; each error state of VB-23; suggestions; reduced motion; no WebGL2 | No violation in any (acceptance check 19) | | |
+| VB-20 | UC-21 | The console during every case of this section | No content security policy violation is reported; the viewer's page was served with the policy (PX-06) | | |
+| VB-21 | UC-21 | VB-01's address with a device pixel ratio of 3 | The map canvas's drawing buffer is twice its displayed width and height: pixel density capped at 2 (NFR-29) | | |
+| VB-22 | UC-21 | While the route draws: the map library's update calls per frame for VB-01 (about 5,600 points) and for VB-03 | The same number of updates per frame for both, and the route's coordinates given to the map once per trip (NFR-29) | | |
+| VB-23 | UC-24 | VB-01's address, the API request answered by the test with each of the 13 error bodies of 9.1 | Each: `error` with its code's heading and `error-message` the body's `message`, as in VP-06; no route and no stop marker drawn (acceptance check 19) | | |
+| VB-24 | UC-23 | `/?start=Chicgo, IL&finish=Houston, TX`, then its `Chicago, IL` link; `/?start=Houston, TX&finish=Dallas, TX` (not recorded); `/?start=Honolulu, HI&finish=Los Angeles, CA`; `/?start=Detroit, MI&finish=Buffalo, NY`; P08's address with `api` stopped; `/?start=Boston, MA&finish=Washington, DC`, not yet cached, with the stand-in stopped | `unknown_place` with five suggestion links; the link opens `/?start=Chicago, IL&finish=Houston, TX`, which plays to the end (`chi_hou`). Then `no_route`; `outside_coverage`; `route_leaves_usa`; `api_unavailable`, said plainly; `routing_unavailable`. Each as `error` with its code's heading and the API's own `message` in `error-message` (acceptance check 19) | | |
+| VB-25 | UC-22 | `/` | The globe turning and the three examples of VP-13; no request to `/api/v1/route/`. Choosing Seattle, WA to Miami, FL opens its address and plays it to the end | | |
+| VB-26 | UC-21 | The requests the page sends: on VB-01's address, run to the end, with Replay and a card chosen; on `/` | One request to `/api/v1/route/` for the trip; none for `/` | | |
+| VB-27 | UC-28 | By hand, in a browser that can reach the map servers: the ordinary stack through nginx, VB-01's address, after EE-08 so that the trip comes from the cache | The night imagery on the globe, then the vector road map as the camera comes down; the credits shown; no content security policy violation in the console | | |
+| VB-28 | UC-28 | The requests the browser makes during every case of this section but VB-27 | None reaches `tiles.openfreemap.org` or `gibs.earthdata.nasa.gov`: the tests depend on no map server | | |
+| VB-29 | UC-22 | `/` with reduced motion requested | The three `example` links; two screenshots taken 1 s apart are identical: the globe does not turn (row 11) | | |
+| VB-30 | UC-28 | VB-01's address, the remote map's description held and then answered by the test from a copy 6 s after it was asked for | At 4 s the viewer goes on with the built-in outlines alone. The late description is ignored for that page view: no tile is asked for after it arrives, and the trip plays to the end on the outlines (row 12) | | |
+
+### 9.12 Makefile, CI and the repository
+
+Architecture section 18 ("Commands") and section 13 (CI), NFR-17, NFR-27, NFR-28, NFR-30 and NFR-31. The targets are those of brief 10B, which row 25 makes binding over the architecture's table; `web-dev` comes with the viewer, in Phase 12. A target is run in the clone's root. "Under each shell" means once under Git Bash, once under PowerShell and once on Linux. `make live` calls the public routing servers, so it is checked with `make -n`, which prints its command without running it.
+
+| ID | UC | Input | Expected | Actual | Result |
+|---|---|---|---|---|---|
+| MK-01 | UC-37 | `make help`, under each shell | Exit code 0. One line for each target with what it does: `help`, `up`, `down`, `logs`, `ps`, `dev`, `web-dev`, `migrate`, `load`, `shell`, `test`, `test-slow`, `test-docker`, `coverage`, `lint`, `format`, `typecheck`, `audit`, `check`, `e2e-up`, `e2e-down`, `e2e`, `live`, `clean`. The list is written as plain lines, so it needs no `grep`, `awk` or `sed` (acceptance check 20) | | |
+| MK-02 | UC-37 | `make lint` under each shell on the clean tree; then with an unused import added to `trips/views.py` | Exit code 0; then not 0, with Ruff's finding naming the file (acceptance check 20) | | |
+| MK-03 | UC-37 | A file with a formatting fault; `make format`; then `make lint` | The file is reformatted; `make lint` exits 0 | | |
+| MK-04 | UC-37 | `make typecheck` | Exit code 0; the Django-free modules of architecture section 3 are checked | | |
+| MK-05 | UC-37 | `make test` under each shell, with the database running | Exit code 0; every test passes (acceptance check 20) | | |
+| MK-06 | UC-37 | `make test-slow` | Exit code 0: the slow exactness test passes | | |
+| MK-07 | UC-37 | `make test-docker` | The suite runs in a container; exit code 0 | | |
+| MK-08 | UC-37 | `make coverage` | A coverage report with a total; exit code 0 when the total is at or above the floor in `pyproject.toml`, not 0 below it | | |
+| MK-09 | UC-37 | `make check`; then with one failing test added | Runs `lint`, `typecheck` and `test`, in that order; exit code 0; then not 0 | | |
+| MK-10 | UC-37 | From `docker compose down -v`: `make up` | The stack is built and started in the background, as in CF-22; `GET http://127.0.0.1:8000/api/v1/health/` answers 200 (acceptance check 20) | | |
+| MK-11 | UC-37 | `make ps`; `make logs` | The services and their states; then the API's log, followed as it grows | | |
+| MK-12 | UC-37 | `make down` | Every service stopped; the database volume kept | | |
+| MK-13 | UC-37 | `make clean` | Every service stopped; the volumes deleted | | |
+| MK-14 | UC-37 | `make dev`, the database volume already holding the stations | The `db` container up; the API from source with reload on port 8001, so `GET http://127.0.0.1:8001/api/v1/health/` answers 200 with `cache` `memory`, as `REDIS_URL` is unset; a saved change to a Python file restarts it (row 25) | | |
+| MK-15 | UC-37 | `make web-dev`, with the API running from source | The viewer's dev server answers its page; `GET /api/v1/health/` sent to the dev server is answered by the API | | |
+| MK-16 | UC-39 | `make e2e-up` | The end-to-end stack is started, as in EE-01 (row 25) | | |
+| MK-20 | UC-39 | `make e2e`, with the end-to-end stack running | Newman runs the whole Postman collection against it, as in EE-03, and, from Phase 12, the viewer's browser tests, as in EE-05; exit code 0; no request to the public routing servers | | |
+| MK-21 | UC-39 | `make e2e-down` | The end-to-end stack is stopped | | |
+| MK-22 | UC-37 | `make audit` | Runs `pip-audit` on the locked Python dependencies; exit code 0 when none has a known fault | | |
+| MK-17 | UC-37 | `make -n live` | Prints the command that runs `scripts/live_check.py` against the stack's address. Its line in `make help` says it uses the public routing server | | |
+| MK-18 | UC-37 | `make migrate`, `make load` and `make shell`, from source with the database running | Migrations applied, exit code 0; the loader's counts ending with 6,626 saved; a Django shell opens | | |
+| MK-19 | UC-37 | The README | Each target of `make help` appears with the plain command beside it, for anyone without make (NFR-30) | | |
+| CI-01 | UC-38 | `.github/workflows/ci.yml` | It runs on every push and every pull request (NFR-17) | | |
+| CI-02 | UC-38 | A push to `next` | The run holds: Ruff's check; Ruff's format check; the type check; the suite with coverage against its floor; `manage.py check --deploy`; the migration check; `pip-audit`; the image build; the end-to-end run (EE-02 to EE-06); and the viewer's lint, type check, unit tests, build and `npm audit --omit=dev --audit-level=high`. Every step passes; the run is green | | |
+| CI-03 | UC-38 | On a throwaway branch, one change at a time, each pushed: a Ruff finding; an unformatted file; a type error in `trips/services/fuel.py`; a failing test; a test removed so that coverage falls below the floor; a model field added with no migration; a check removed from `SILENCED_SYSTEM_CHECKS`; a Python package pinned at a version with a known fault | Each run fails at the step for that check: lint; format; type check; tests; coverage; migration check; deploy check; audit | | |
+| CI-04 | UC-38 | A Dockerfile that does not build | The run fails at the image build | | |
+| CI-05 | UC-38 | A Postman check broken; separately, a collection request whose trip has no recording | The run fails at the end-to-end run: the first at Newman, the second at the check that every request in the stand-in's log was matched | | |
+| CI-06 | UC-38 | In `web/`, one at a time: an ESLint finding; a TypeScript error; a failing unit test; a build error; a dependency with a high-severity advisory | Each run fails at the viewer's lint; type check; unit tests; build; audit | | |
+| CI-07 | UC-38 | `main`, after `next` is merged into it | Its latest CI run is green (acceptance check 16) | | |
+| RP-01 | UC-38 | `LICENSE` and `data/README.md` | `LICENSE` is the MIT licence, for the code. `data/README.md` states each data file's own terms (NFR-31) | | |
+| RP-02 | UC-36 | The README | States every decision, D-1 to D-24 | | |
+| RP-03 | UC-38 | `.github/dependabot.yml` | Proposes updates for the Python packages, the images, the GitHub actions and the viewer's packages | | |
+| RP-04 | UC-38 | `.pre-commit-config.yaml`; `pre-commit run --all-files` on the clean tree; then a commit of a file with a Ruff finding | The hooks are Ruff's checks, Ruff's formatter and the file hygiene hooks (row 24), and leave `data/` and `*.gz` files alone. The run exits 0. The commit is refused, naming the finding | | |
+| RP-05 | UC-38 | `pyproject.toml` | Holds a coverage floor: a whole per cent, the coverage measured in Phase 10 rounded down | | |
+| RP-06 | UC-38 | `web/tsconfig.json`; in `web/`, `npx tsc --noEmit` and `npx eslint .` | `strict` is true; both exit 0 (NFR-28) | | |
+
+### 9.13 Fixes from the second audit
+
+One case for each fix ruled in the table "QA-0b" of `docs/plan/PHASE-9.md`, with the wrong input the fix must catch. "The New York answer" is the answer for the recorded New York to Los Angeles road at stop cost 10, built as in the regression tests and checked against the real CSV. R6, R12 and R17 are as written in section 4. The routing cases use the start, finish and "OK answer" of section 2.9.
+
+| ID | UC | Input | Expected |
+|---|---|---|---|
+| QB-01 | UC-19 | Q0b-1. The New York answer with stop 3 (Utica, IL, 2.969) given the station 66341 (Harrold, TX, 2.68733333), 742 miles away: its `station_id`, name, address, city, state and price changed; its point on the line, mile marker and gallons kept; its cost, `total_fuel_cost`, `lowest_possible_fuel_cost` (lowered to the new total) and its map Point made to agree | R17 is reported, and no other rule |
+| QB-02 | UC-19 | Q0b-1 and Q0b-2. The verifier over the answer for each of the 15 recorded roads that stay in the USA (GE-16), at stop costs 0, 10 and 25 | No rule fails, R17 and the new R6 and R12 included |
+| QB-03 | UC-19 | Q0b-2. The New York answer with stop 4's `lat` and `lng`, and its map Point, moved 17 points further along the route line, about 8.5 miles; its `mile_marker` kept | R12 is reported |
+| QB-04 | UC-12 | Q0b-3. Server 1 answers 302, with a `Location` header; separately, 403; separately, 404. Server 2 gives the OK answer each time | A `Route` from server 2 each time: server `routing.openstreetmap.de`, calls 2 |
+| QB-05 | UC-12 | Q0b-3. Server 1 answers 204, 301, 307, 408, 410 and 451, each in its own test; server 2 the OK answer | Retried each time; calls 2 |
+| QB-06 | UC-12 | Q0b-3. Server 1 answers 400 with `{"code": "InvalidQuery", "message": "…"}` | `RoutingUnavailable`, reason `error`; calls 1; server 2 never called: a 400 that is not "no road" means the request itself is wrong. RT-08 still holds for a 400 with `NoRoute` |
+| QB-07 | UC-03 | Q0b-4. `build_answer` with the plan's and the free-stops purchases both (0, 10.004), (1, 0.004), (2, 9.992), at prices [3.00, 3.00, 3.00]; distance 200.0; stop cost 0 | Shown gallons [10.00, 0.01, 9.99]; costs [30.00, 0.03, 29.97]; total_fuel_cost and lowest_possible_fuel_cost 60.00; stops 3 and lowest_possible_stops 3, both counted from the shown gallons |
+| QB-08 | UC-19 | Q0b-5. The New York answer with one more stop between stops 2 and 3: a station along the road that the plan does not use, at its own road point, buying 0.00 gallons at cost 0.00; orders renumbered, `summary.stops` one higher, a map Point added | R6 is reported, and no other rule |
+| QB-09 | UC-19 | Q0b-5. The New York answer with stop 3 buying −0.01 gallons at cost −0.03, stop 4 buying 0.01 gallons more, and costs and total made to agree | R6 is among the rules reported |
+| QB-10 | UC-19 | N1. The description at the top of `tests/verify.py` | Says that the verifier checks that a plan is consistent and possible, not that it is the cheapest, and names the exactness tests (EX-01 to EX-04) as what checks that |
+| QB-11 | UC-12 | N4. The comment beside `ROUTING_DEADLINE_SECONDS` in `config/settings.py` | Says what architecture section 9 says: an attempt can run to about twice the deadline. It no longer says the deadline runs "to reading the last byte" |
+| QB-12 | UC-08 | N5. `resolve()` on `Mexico, USA`; on `Mexico`; on `Tijuana Mexico` | `UnknownPlace`, with exactly the suggestions `Mexico, IN`, `Mexico, ME`, `Mexico, MO`, `Mexico, NY` and `Mexico, PA`, in any order; `OutsideCoverage`; `OutsideCoverage` |
+| QB-13 | UC-03 | N7 (a). `build_answer`: the plan buys (0, 30.000) at 3.50; the free-stops purchases are (0, 0.004), (1, 10.003), (2, 19.993) at [3.50, 3.00, 2.00]; distance 300.0 | lowest_possible_fuel_cost 70.01 (shown gallons 0.00, 10.01, 19.99; costs 0.00, 30.03, 39.98); lowest_possible_stops 2. A builder that dropped the 0.004-gallon purchase would give 70.00 (gallons 10.00, 20.00), so AN-11's second half can now fail |
+| QB-14 | UC-19 | N7 (b). The answer test named for the correctness rules, on its own input | It passes the whole answer to `verify_response` and requires `[]`, so every rule is checked, not the nine it checked before |
+| QB-15 | UC-19 | N7 (c). The regression pins, for the New York answer | Pinned stop by stop: each stop's `station_id`, `mile_marker`, `gallons` and `cost`, as exact values, beside the summary pins. The values are those the release produces, recorded when the test is written (row 26). Any change fails it: moving 0.01 gallons from one stop to the next is one such change |
+| QB-16 | UC-12 | N8. Two threads ask for the shared HTTP client at once, on first use, with its creation slowed so that both are inside it together | Both get the same client; one client is created |
+| QB-17 | UC-13 | N8. Two threads call `get_index()` at once, on first use, with the read slowed in the same way | Both get the same index; the database is read once |
+
+### 9.14 The verifier's options
+
+Rows 2 and 3 of the settled points: the verifier accepts any routing host its caller names, as well as the two public ones (R15), and checks R17 against the places its caller gives. "The New York answer" is as in 9.13.
+
+| ID | UC | Input | Expected |
+|---|---|---|---|
+| VR-01 | UC-39 | The New York answer with `meta.routing_server` `fake-osrm`: checked with no host named; then with the caller naming `fake-osrm`. Then the unchanged answer, `router.project-osrm.org`, with the caller naming `fake-osrm` | R15 is reported, and no other rule; then no rule fails; then no rule fails, as the public hosts are always accepted (row 2) |
+| VR-02 | UC-39 | `scripts/live_check.py`'s check of one 200 body, the answer of VR-01 with `fake-osrm`: run with `--routing-host fake-osrm`; then without the option | Passes; then fails, naming R15 (row 2) |
+| VR-03 | UC-19 | EP-01's answer, whose stations are in `Testville, TX`: checked with the endpoint tests' own places file, which places `Testville, TX` at each of the test's station positions; then with the default places | No rule fails; then R17 is reported for each station stop, as `data/us_cities.csv` has no `Testville, TX` (row 3) |
+| VR-04 | UC-19 | With the default places: an answer whose one station stop is in `Henrico, VA`, at the position `stations/places.py` gives that hand-added place | R17 is not reported: the five hand-added places are part of the default places (row 3) |

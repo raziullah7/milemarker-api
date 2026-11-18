@@ -155,6 +155,59 @@ Settled after 9S's second pass:
 
 9S's own readings are confirmed: NFR-9 keeps its README sentence; D-2 and D-15 merge old and new text; new rows are "From: Ours"; `WEB_CONCURRENCY` defaults to 2; health counts stations from the in-memory index; the cache class sits in the integration layer.
 
+## Points raised by the test design, settled
+
+9T could not fix an expected output for 27 cases (`reports/phase9-T.md`). Each is settled here, in its report's order.
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Four trips in the Postman collection have no recorded road | Three are recorded in Phase 10 (Los Angeles to New York, St. Louis to Winston-Salem, Dallas to Phoenix); Los Angeles to Seattle comes from the Phase 1 research recordings. The whole collection then runs on the stand-in. |
+| 2 | Rule R15 rejects the stand-in's host name | The verifier accepts the two public hosts, plus any host its caller names. `live_check.py` gains `--routing-host`, used in the end-to-end run with the stand-in's service name, `fake-osrm`. |
+| 3 | Rule R17 against the endpoint tests' invented stations | R17 checks against the places data its caller gives. By default that is the real places file and the five hand-added places; the endpoint tests give their own small places file. |
+| 4 | The head's speed while the route draws | Constant along the drawn line: progress is linear between 8 s and 15 s. |
+| 5 | When stop 1 appears | At 8 s, as the line starts: its marker, its card and its cost. |
+| 6 | Road miles and drawn length along the line | For each point of the route line the viewer keeps two running totals: ground distance by the great-circle formula, scaled so the last equals the API's `distance_miles`; and drawn length in Web Mercator, which is what the map library's line progress measures. Between points both are interpolated linearly. |
+| 7 | After the intro is cancelled | The trip is shown finished, as after Skip. The camera stays where the visitor's own gesture leaves it. |
+| 8 | Only `start` or only `finish` in the address | The viewer asks the API, and shows the `invalid_request` it answers with. Only an address with neither shows the globe and the examples. |
+| 9 | The viewer's wording and number formats | Miles with a thousands separator and one decimal, as `2,800.6 mi`. Money as `$867.27`. Gallons to two decimals. A price exactly as the API gives it, as `$3.239 / gal`. An error shows a short heading for its code and, under it, the API's own `message`. The headings and the other fixed sentences are written when the viewer is built and recorded in the test cases then; the tests find elements by role and test ID and compare figures, not prose. |
+| 10 | Route colour and image tolerances for the browser tests | Set in the Phase 12 trial and recorded in the test cases then. |
+| 11 | Reduced motion on the bare page | The globe does not turn. |
+| 12 | A remote map description that arrives after 4 seconds | Ignored for that page view. |
+| 13 | Credits without WebGL2 | The credits name the sources in use. The static drawing uses only the API's data and the built-in outlines, so it credits Natural Earth. |
+| 14 | "About half a second" | Redis connections time out after 0.1 s and commands after 0.25 s, with no retries. The test's limit: a request with Redis unreachable takes no more than 0.5 s longer than one with Redis up. |
+| 15 | The line logged per trip | One line at INFO for every 200, cache hits included, from the logger `trips`: `trip start="New York, NY" finish="Los Angeles, CA" stop_cost=10 miles=2800.6 stops=7 total=867.27 routing_calls=1 cache_hit=false own_ms=19.5`. An error answer logs one line at WARNING with its code and no trip figures. |
+| 16 | An `X-Request-ID` sent by the client | nginx replaces it with its own. |
+| 17 | A missing file under `/assets/` | 404 `not_found` in the API's error shape, written by nginx. |
+| 18 | `not_found` in the OpenAPI document | Not listed on the route: the route's address exists. The route lists 400, 422, 429, 500, 502 and 503 with every code each can carry. `not_found` and `method_not_allowed` are described in the document's opening text. |
+| 19 | Two values for `Referrer-Policy` | One value everywhere, `strict-origin-when-cross-origin`. The API's answers get their security headers from Django; the viewer's files get theirs from nginx; nginx adds none to an answer it passes through, so no header is sent twice. |
+| 20 | The content security policy's text | Written when the viewer is built and recorded then. The map servers are `tiles.openfreemap.org` and `gibs.earthdata.nasa.gov`. The tests check the header is on `/`, is not on `/api/v1/docs/`, and that the browser reports no violation. |
+| 21 | `ROUTING_SERVERS` edge cases | A value that is empty or only spaces counts as not set (Compose passes the variable through, so on a fresh clone it arrives empty). Otherwise entries are trimmed and empty entries dropped; if no entry is left, or an entry has no `{coords}`, the API refuses to start, with Django's `ImproperlyConfigured` naming the variable and the entry. |
+| 22 | The stand-in's request log | `{"count": 2, "requests": [{"path": "…", "start": [lng, lat], "finish": [lng, lat], "matched": "nyc_la", "status": 200}, …]}`; `matched` is null when no recording matched. |
+| 23 | The stand-in inside the running image | From Phase 11 the stand-in runs from the test image, which holds the tests and the recordings. The running image holds neither (NFR-25). |
+| 24 | What pre-commit runs | Ruff's checks, Ruff's formatter and the file hygiene hooks. NFR-27's last sentence becomes: the lint and format checks also run before a commit, through pre-commit. |
+| 25 | Makefile targets: the architecture and brief 10B differ | Brief 10B is binding: `e2e-up`, `e2e-down`, `e2e`, `audit`, and `dev` on port 8001. The architecture's table is brought in line. |
+| 26 | The stop-by-stop pin | Its values are the ones the release produces, recorded when the test is written. Any change fails it. That is what a pin is. |
+| 27 | `handler403` | Not built: nothing in the API can answer 403. Only `handler400` is set. |
+
+Settled after 9S's third pass:
+
+- The built-in outlines are under every view, so Natural Earth is credited in every view, not only without WebGL2.
+- The answers nginx writes itself carry the same three security headers, set by nginx.
+- An unexpected failure is logged once, in full, at ERROR. It has no second line at WARNING.
+- FR-21's "turning globe" stands; the reduced-motion exception is in architecture section 19.
+- `make e2e` runs Newman, and from Phase 12 the viewer's browser tests after it. `make web-dev` passes `/api` to port 8001, where `make dev` serves the API.
+
+Settled after 9T's second pass:
+
+- Money of $1,000 or more has a thousands separator, as `$1,234.56`.
+- The assumptions are shown as the API gives them, with their units and no added decimals: `500 mi`, `10 mpg`, `$10` a stop.
+- When no answer arrives at all, the viewer shows the same heading as for `api_unavailable`.
+- The stand-in's log gives each request's `path` without its query string.
+- The four new recordings are named `la_nyc`, `stl_winstonsalem`, `dal_phx` and `la_sea`.
+- The viewer's test IDs listed in `docs/test-cases.md` section 9.1 are binding on its builder.
+
+Three sentences 9T found false are corrected with these: architecture section 8 on purchases under 0.005 gallons (by 10C, with the fix), section 9 on which answers end a routing attempt (by 10C), and section 13 on which connections the tests may open.
+
 ## Rulings on the audits (9.8)
 
 ### QA-0a, the delivery side
@@ -213,13 +266,52 @@ Report: `reports/phase9-Q0b-changes.md`. No Critical, 1 Important, 4 Minor, 9 No
 
 ## Gate 9 checklist
 
-- [ ] `v1.0.0` is on GitHub; work is on `next`.
-- [ ] The trial's result is recorded.
-- [ ] Every row of "The spec changes" has a matching line in a spec, checked by the controller.
-- [ ] Every new requirement ID appears in a use case or a test case; every new test case states its input and expected output.
-- [ ] Both audits are in, and every finding has a ruling.
-- [ ] Committed.
+- [x] `v1.0.0` is on GitHub; work is on `next`.
+- [x] The trial's result is recorded.
+- [x] Every row of "The spec changes" has a matching line in a spec, checked by the controller.
+- [x] Every new requirement ID appears in a use case or a test case; every new test case states its input and expected output.
+- [x] Both audits are in, and every finding has a ruling.
+- [x] Committed.
 
 ## Result
 
-(Filled in when the phase closes.)
+Closed 18 Nov 2026. Every gate item passed.
+
+### Gate evidence
+
+| Gate item | Evidence |
+|---|---|
+| `v1.0.0` on GitHub, work on `next` | The tag points at `8f9609a` on the remote. The branch `next` was cut from it |
+| The trial | Recorded above: `drf-spectacular` 0.30.0 works on Django 6.1.3 and DRF 3.18.3 |
+| The spec changes are in the specs | The controller read the whole diff of `docs/requirements.md` against the binding list, and read architecture sections 10, 11, 18 and 19 in full. A search of the three specs finds no open marker |
+| Every new requirement is covered | A script by the controller: 37 new or changed requirement and decision IDs, none missing from the use cases and test cases; acceptance checks 11 to 20 each mapped to cases; 450 case rows, no ID twice; none of the 246 new cases has an empty input or expected cell |
+| Both audits ruled | The two tables under "Rulings on the audits": 27 findings from QA-0a and 14 from QA-0b, each with a ruling and a phase |
+
+### What was produced
+
+- **Specs:** 8 requirements changed and 19 added (FR-20 to FR-26, NFR-19 to NFR-31), 2 decisions changed and 9 added (D-16 to D-24), acceptance checks 11 to 20, and two new architecture sections, "Running it" and "The viewer".
+- **Test design:** 19 use cases (UC-21 to UC-39) and 246 test cases in 15 groups, each with its input and expected output, written before any code. Nine cases carry one value that can only be fixed when the viewer exists (wording, a colour, an image tolerance, the content security policy's text); each says what it checks now and marks that value "recorded in Phase 12".
+- **Audits:** QA-0a found no Critical and 4 Important; QA-0b no Critical and 1 Important. Both reports are in `reports/`.
+
+### Found by the audits, most serious first
+
+- The public release publishes PostgreSQL and the API on every network interface, with a default superuser password. Fixed first in Phase 10.
+- The response verifier never checked that a stop's station is near the road. A station 742 miles away passed all 16 rules.
+- The Postman collection's checks would pass a plan that bought all the fuel at the first stop.
+- Switching host checking on would have enforced nothing, because the one middleware that checks the host was not in use.
+- Two results in the Part 1 test record were marked PASS with their stated condition unmet. Both are now PARTIAL.
+
+### Decisions taken in this phase
+
+66 points were left open by the binding list and settled here: 27 raised while the specs were written, 27 raised by the test design, and 12 in follow-ups. They are in the three "settled" sections above.
+
+### Deviations
+
+- The spec agent was resumed twice and the test-design agent once, to write settled points in. The plan had one pass each.
+- A script that was to record 27 decisions failed on a quoting error after two agents had been pointed at its output. The section was written by hand about a minute later and both agents were told. Both found it.
+
+### Carried into Phase 10
+
+- The first audit's fixes for the Compose file and the ignore files go first, so they reach `main` at Gate 10.
+- The viewer's test IDs in `docs/test-cases.md` section 9.1 are binding on its builder.
+- Three public routing calls are spent recording roads; three remain.

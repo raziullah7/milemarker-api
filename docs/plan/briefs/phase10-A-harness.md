@@ -12,6 +12,10 @@ The repository root is the folder you were given; every path is relative to it.
 - Write each test first and see it fail.
 - Match the code's style: a short description at the top of each module, a docstring on each function, comments that say why.
 
+## Settled details
+
+In `docs/plan/PHASE-9.md`, section "Points raised by the test design, settled", rows 21 (the `ROUTING_SERVERS` edge cases and the start-up refusal), 22 (the exact JSON of the request log) and 23 are binding. `docs/test-cases.md` section 9 holds your catalogue rows, already written: the SI cases for the stand-in, and the CF cases on `ROUTING_SERVERS`. Build to them; if a row is wrong, say so in your report instead of changing it.
+
 ## Read first
 
 - `trips/services/routing.py` in full: exactly what the client sends and what it accepts. `tests/test_routing.py` for how answers are faked today.

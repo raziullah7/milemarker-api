@@ -118,7 +118,7 @@ The speed targets were set from design measurements on a 2,800-mile route. The f
 | NFR-24 | **Logs.** Each line has a time, a level and the request's ID. One line is written per planned trip, with its distance, stops, total, routing calls, cache hit and time taken. | Want | Ours |
 | NFR-25 | **Image.** Built in stages. The running image holds only what runs, and runs as a user that cannot write to the code. | Want | Ours |
 | NFR-26 | **Tests without the public routing servers.** A stand-in routing server answers with the saved real roads. An end-to-end run drives the API through the proxy, the Postman collection and the viewer in a browser against it, and in that run the API has no route to the internet. | Want | Ours |
-| NFR-27 | **Quality gates.** Test coverage is measured and may not fall below a set floor. The Django-free modules pass a type check. Dependencies are audited for known faults. The same checks run before a commit through pre-commit. | Want | Ours |
+| NFR-27 | **Quality gates.** Test coverage is measured and may not fall below a set floor. The Django-free modules pass a type check. Dependencies are audited for known faults. The lint and format checks also run before a commit, through pre-commit. | Want | Ours |
 | NFR-28 | **Viewer quality.** TypeScript in strict mode, lint, unit tests, browser tests, an automated accessibility scan with no violations, and every control reachable by keyboard. | Want | Ours |
 | NFR-29 | **Viewer speed.** The work done per animation frame does not grow with the length of the route. Pixel density is capped at 2. | Want | Ours |
 | NFR-30 | **Makefile.** The everyday commands are `make` targets; `make help` lists them. The README gives the plain command beside each. | Want | Ours |

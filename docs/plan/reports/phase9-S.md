@@ -216,3 +216,44 @@ Req line 6 now also points to the settled-gaps section of PHASE-9.
 - **Warnings during a long outage.** Decision 4 says a warning is logged "each time it falls back", and decision 3 retries every 30 seconds. I wrote that a failed retry logs nothing new (Arch line 350). Otherwise a two-minute outage would log four warnings per worker, and check 13's "each worker logs one warning" would fail.
 - **The database health check.** Decision 13 says `pg_isready` "on its network address"; ruling Q0a-11 says `pg_isready -h 127.0.0.1`. Both require a network connection rather than the local socket, and I wrote it that way (Arch line 663) without naming the host.
 - **Where the 400 and 403 handlers come from.** Arch line 450 says Django's error page is replaced for 400 and 403. That detail comes from ruling Q0a-03, which decision 20 cites.
+
+## Third pass: the test design's points
+
+These come from `docs/plan/PHASE-9.md`, "Points raised by the test design, settled". Only the rows that are specification are written in, in `docs/requirements.md` and `docs/backend-architecture.md`. Rows 1, 10, 22 and 26 are test data or test cases, and are not in the specs. Architecture sections 4, 8, 9 and 14 are untouched. Line numbers are after this pass.
+
+| Row | Where it now lives |
+|---|---|
+| 2 (R15 accepts a host its caller names; `--routing-host`, `fake-osrm`) | Arch §13 verifier row, line 536 |
+| 3 (R17 against the places data its caller gives) | Arch §13 verifier row, line 536 |
+| 4 (head at constant speed; progress linear from 8 s to 15 s) | Arch §19 "Revealing the route", line 842 |
+| 5 (stop 1 at 8 s: marker, card, cost) | Arch §19 "The animation", line 834 |
+| 6 (two running totals per point; Web Mercator; linear interpolation) | Arch §19 "Revealing the route", lines 844–849. "The map's projection" in the stop-timing paragraph is now "Web Mercator" |
+| 7 (after cancelling, shown finished; camera stays) | Arch §19, line 836 |
+| 8 (only `start` or only `finish`: ask the API, show `invalid_request`) | Arch §19, line 785 |
+| 9 (number formats; error heading plus the API's `message`; fixed sentences written in Phase 12) | Arch §19 panel, lines 806–811; errors, lines 813–817 |
+| 11 (reduced motion: the bare page's globe does not turn) | Arch §19 fallbacks, line 859 |
+| 12 (a late remote style is ignored) | Arch §19, line 864 |
+| 13 (credits name the sources in use; without WebGL2, Natural Earth) | Arch §19 map sources, lines 874, 876 |
+| 14 (Redis timeouts 0.1 s and 0.25 s, no retries; the 0.5 s test limit) | Arch §10, line 349 |
+| 15 (the per-trip line and its format; an error logs one WARNING line) | Arch §18 "Logs", lines 706–712 |
+| 16 (nginx replaces a client's `X-Request-ID`) | Arch §18, lines 716, 724 |
+| 17 (missing file under `/assets/`: 404 `not_found` written by nginx) | Arch §11 line 456; §18 line 722 |
+| 18 (what the route lists in the OpenAPI document; `not_found` and `method_not_allowed` in its opening text) | Arch §11, line 489. FR-19 is unchanged: "covers … every error code" still holds |
+| 19 (one `Referrer-Policy` value; Django for the API's answers, nginx for the viewer's; nothing sent twice) | Arch §18 security headers, lines 733–738 |
+| 20 (the two map servers' host names; the policy's text written in Phase 12) | Arch §18 line 740; §19 map sources table |
+| 21 (`ROUTING_SERVERS` trimmed, empty entries dropped, `ImproperlyConfigured` at start-up) | Arch §18 "Configuration", line 696 |
+| 23 (the stand-in runs from the test image; the running image holds neither tests nor recordings) | Arch §18 "Images", line 747; §13 line 554 |
+| 24 (pre-commit runs Ruff's checks, formatter and hygiene hooks) | Req NFR-27, line 121. Arch §13, line 561 |
+| 25 (brief 10B's Makefile is binding) | Arch §18 "Commands", lines 755–777, with `web-dev` marked as coming with the viewer |
+| 27 (only `handler400`) | Arch §11, line 453 |
+| §13 sentence on connections (127.0.0.1 only) | Arch §13, line 525 |
+
+### Other sentences changed in this pass
+
+| Where | Change | Why |
+|---|---|---|
+| Arch §13, line 554 | "the 17 saved real roads" became "the saved real roads" | Row 1 adds three recordings and Los Angeles to Seattle, so 17 becomes false |
+| Arch §13, CI paragraph | "pre-commit runs the same checks before a commit" moved to its own bullet and narrowed (line 561) | It contradicted row 24 and the new NFR-27 |
+| Arch §18, below the Commands table | "Running from source, as `make dev` does…" now says `make dev` starts only the database container | Brief 10B's `dev` does not start Redis |
+| Arch §11, line 409 | New paragraph: the body and status are as in release 1.0; only headers are added | One of the five points in "Settled after 9S's second pass". It was not in the documents |
+| Arch §11, lines 453, 455 | The two new `invalid_request` answers have empty `details` | Same: listed as settled, but not in the documents |
