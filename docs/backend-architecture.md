@@ -346,7 +346,7 @@ The version number is one integer, `CACHE_KEY_VERSION`, in `config/settings.py`,
 
 The limit is 60 requests in a minute for each client (NFR-16). It is counted in the cache, so every worker shares the count.
 
-- **A window opens with a client's first request and lasts 60 seconds.** The 61st request inside it is answered 429, with the seconds left in the window as `retry_after_seconds` and in the `Retry-After` header. The next request after the window ends opens a new one.
+- **A window opens with a client's first request and lasts 60 seconds.** The 61st request inside it is answered 429, with the seconds left in the window as `retry_after_seconds` and in the `Retry-After` header. The next request after the window ends opens a new one. A client that times it can therefore send 60 at the end of one window and 60 at the start of the next; the limit is on each window, not on every 60 seconds that can be drawn.
 - **Each request is counted with one atomic step,** the cache's own increment (Redis `INCR`). The framework's built-in limiter reads a client's history, adds to it and writes it back; with two workers of four threads on one Redis, requests sent at once overwrote each other's entries, and 164 of 300 passed (*measured*, review QA-1). The limiter in `trips/throttling.py` replaces it.
 - **Which addresses.** The route, the schema and the Swagger page count against the one limit. The health address does not. Neither does an answer given before any view runs: the 404 for an unknown address and the 400 for a host that is not allowed.
 

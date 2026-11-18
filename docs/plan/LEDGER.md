@@ -89,3 +89,5 @@ Repo: this repository (commit identity must be `Razi Ullah <50240668+raziullah7@
 - Fix wave 11F done and checked by the controller (see `PHASE-11.md`, "Rulings on the fix wave"): 597 tests, coverage 98.47%; the burst on the live two-worker stack now passes exactly 60 of 300.
 - Quota (the user asked for careful spending, 18 Nov): weekly limit for all models 69% before 11F, 70% after it (one Opus build of 363k tokens and the controller's checks). From here: Opus only for the viewer build and the adversarial reviews; Sonnet for specified fixes, scoped re-reviews, nginx and documents. Reserve: stop new work at 93%.
 - Scoped re-review of the fix wave dispatched (Sonnet, fresh, `_r` test database).
+- CI green on c53e467 (run 44376460013). 11R (Sonnet, fresh): 7 of 9 closed, 2 in part as ruled, 6 Notes, all ruled in `PHASE-11.md`. Live-check on the stand-in: 42 of 49, the seven others being trips with no recording.
+- **Phase 11: complete.** Gate 11 passed, Thursday 19 Nov, about 00:40. `next` merged into `main`. Quota: weekly limit for all models at 70%.

@@ -73,22 +73,82 @@ The controller read the diff and reran every check: 597 tests, none skipped, cov
 - Stands: if the one try after 30 seconds happens to be the limiter's increment of a count Redis does not hold, the process stays on its memory for another 30 seconds. Why: a request's first cache call is a read, so the try is that read in practice; when it does happen the count is still right and the next try returns the process to Redis.
 - Carried to Phase 13: test-case IDs for the 30 new tests, with the other actual results. The response field `assumptions.stop_cost` still spells out the default in its description; corrected with the documents.
 
+### Rulings on the re-review (11R)
+
+A fresh reviewer, who wrote none of the fixes, re-read the fix commit (`reports/phase11-R.md`). Seven of the nine findings are closed; two are closed in part, exactly as ruled (Q1-05, Q1-07). It removed each fix in a scratch copy and saw a test fail for all but Q1-06, whose test it read and ran. No new Critical or Important fault. Six Notes:
+
+| Note | Ruling |
+|---|---|
+| R11-1 The `WEB_CONCURRENCY=abc` test runs the gunicorn file alone, a path production never takes | Stands; it follows from the ruling on 11F that gunicorn refuses that value itself |
+| R11-2 A comment said an empty `WEB_CONCURRENCY` counts as not set, though gunicorn fails on one | Fixed by the controller: the comment now says what happens and why Compose gives the variable a value |
+| R11-3 An odd or very long client address makes Django warn about the cache key | Stands. An address can be odd only where a forged header is trusted; from Phase 12 nginx writes the address itself |
+| R11-4 The window allows up to 120 requests across its boundary | Stands, and is now said in architecture section 10. The limit protects the routing servers from sustained load, which it still does |
+| R11-5 `LOG_LEVEL=WARN` and `FATAL` are refused | Stands. The five names are the ones documented |
+| R11-6 The window tests run on the in-memory cache; only the burst and key-lifetime tests use Redis | Stands. The window's arithmetic does not depend on where the count is kept; what does, the atomic count, is tested on Redis |
+
 ## Gate 11 checklist
 
-- [ ] The controller has read every diff.
-- [ ] The suite passes, with the Redis tests against a real Redis and against a dead address, timed; none skipped. Coverage is at or above the floor. The slow test, mypy and Ruff are clean.
-- [ ] `manage.py check --deploy --fail-level WARNING` passes, and each silenced check has its reason beside it.
-- [ ] From `down -v`, `docker compose up --build` with no `.env` starts the database, Redis, the setup (exits 0) and the API; the health address answers 200 with `"cache": "redis"`.
-- [ ] Twenty repeats of one trip are all cache hits, across both workers.
-- [ ] Drill: Redis stopped, requests still 200, each worker logs one warning, health says `fallback`; Redis started, health says `redis` again within about 30 seconds.
-- [ ] A foreign `Host` gets 400 in the error shape.
-- [ ] The end-to-end run passes: the Postman collection and the live-check cases on the stand-in.
-- [ ] The suite passes in a container.
-- [ ] The OpenAPI document is committed, valid, and a test fails if it and the code disagree; the Swagger page renders.
-- [ ] QA-1's findings are ruled, fixed, and re-read by a reviewer who did not write the fixes.
-- [ ] CI is green on `next`. `next` is merged into `main`.
-- [ ] Committed.
+- [x] The controller has read every diff.
+- [x] The suite passes, with the Redis tests against a real Redis and against a dead address, timed; none skipped. Coverage is at or above the floor. The slow test, mypy and Ruff are clean.
+- [x] `manage.py check --deploy --fail-level WARNING` passes, and each silenced check has its reason beside it.
+- [x] From `down -v`, `docker compose up --build` with no `.env` starts the database, Redis, the setup (exits 0) and the API; the health address answers 200 with `"cache": "redis"`.
+- [x] Twenty repeats of one trip are all cache hits, across both workers.
+- [x] Drill: Redis stopped, requests still 200, each worker logs one warning, health says `fallback`; Redis started, health says `redis` again within about 30 seconds.
+- [x] A foreign `Host` gets 400 in the error shape.
+- [x] The end-to-end run passes: the Postman collection and the live-check cases on the stand-in.
+- [x] The suite passes in a container.
+- [x] The OpenAPI document is committed, valid, and a test fails if it and the code disagree; the Swagger page renders.
+- [x] QA-1's findings are ruled, fixed, and re-read by a reviewer who did not write the fixes.
+- [x] CI is green on `next`. `next` is merged into `main`.
+- [x] Committed.
 
 ## Result
 
-(Filled in when the phase closes.)
+**Gate 11 passed** on Thursday 19 Nov 2026, about 00:40 local time, inside the cut line. Redis and the second worker stay.
+
+**Delivered**
+
+- The API runs on two gunicorn workers of four threads, with Redis shared between them for the road cache, the answer cache and the rate-limit count, and each process's own memory as the fallback.
+- A one-off `setup` service migrates and loads the stations; the API starts after it. Health checks, start order and a 35-second stop.
+- Every setting from the environment with a default; a fresh clone still needs no `.env`. Bad values are refused at start by name.
+- Host checking, security headers, the deployment check clean with three silenced checks, each with its reason.
+- `GET /api/v1/health/`, `GET /api/v1/schema/`, `GET /api/v1/docs/`, and `docs/openapi.yaml` held to the code by a test.
+- A request ID on every log line and every answer; one line per planned trip.
+- The image in stages, base images pinned by digest, the running image as a user that cannot write to the code.
+- A rate limiter of our own that counts atomically.
+
+**Evidence, each run by the controller**
+
+| Check | Result |
+|---|---|
+| Suite | 597 passed, none skipped (463 at the start of the phase); coverage 98.47% against a floor of 98% |
+| Slow test, mypy, Ruff, format, deployment check, schema validation | Clean |
+| From `down -v`, `up --build -d` with no `.env` | db, redis and api healthy, setup exited 0; health `{"status":"ok","stations":6626,"cache":"redis"}` |
+| Twenty repeats of New York to Los Angeles | 20 hits, 1 routing request on the stand-in, answered by both workers |
+| Postman collection from a cold cache | 14 requests, 111 assertions, none failed; 8 routing requests, all matched |
+| Drill | Redis stopped: first request 0.50 s and 0.46 s on the two workers against 0.01 s before (about 4 s before the deadline was added), every request 200, one warning from each worker, health `fallback`. Started: both workers back within 31 s |
+| A foreign `Host` | 400 `invalid_request`, JSON |
+| A burst of 300 requests, 16 at a time, one client | 60 answered, 240 refused with 429, across both workers (164 of 300 passed before the fix) |
+| `DJANGO_ALLOWED_HOSTS=api.example` | Container healthy; that name 200, another name 400 |
+| Live-check cases on the stand-in | 42 of 49 passed. The seven that did not (P12, P13, P17 to P20, N23) are trips with no recorded road, which the stand-in cannot answer; every case with a recording passed, the rate limit and the three speed cases among them |
+| Suite in a container | 544 passed at the runtime commit; CI builds both image targets and runs the suite on every commit since |
+| Swagger page | Opened in a real browser from the rebuilt image: both operations drawn, no error |
+| CI on `next` | Green on f01f5a9, 8edd8e1 and c53e467 (runs 44357931847, 44361418290, 44376460013) |
+
+**Reviews**
+
+- QA-1, independent and adversarial: 0 Critical, 2 Important, 6 Minor, 7 Notes. About 5,600 requests with Redis stopped and paused all answered 200. It removed ten safeties in a scratch copy; the suite noticed each.
+- Fix wave 11F, then 11R, a fresh reviewer: 7 of 9 closed, 2 closed in part as ruled, 6 new Notes, none Critical or Important.
+
+**Deviations from the plan**
+
+- A deadline on every Redis call, kept by a pool of threads, was not in the specification. It was added when a stopped Redis container was measured to cost 4 seconds in the name lookup.
+- The framework's rate limiter was replaced by one of our own, after the review showed the limit leaking under requests sent at once.
+- The planner reads the stations before the answer cache; architecture section 5 was corrected.
+- Not run by the controller in this phase: the suite in a container after the fix wave (CI's image job builds the test image, and CI's checks job runs the same tests), and CF-24, CF-27 and CF-28, which need a deliberately broken database. QA-1 covered a failed setup and Redis down at start.
+
+**Carried forward**
+
+- Phase 12: `DJANGO_NUM_PROXIES` 1 and the API's port moved to nginx; nginx refuses over-long request lines in JSON, with its limit below gunicorn's; QA-3 looks at gunicorn's control socket, the pinned Swagger version and an integrity hash.
+- Phase 13: test-case IDs and actual results for the tests added in this phase; the README says how to empty the cache, that a change of routing servers needs it, and that the API is restarted after loading changed stations; the `assumptions.stop_cost` description.
+- Public routing calls used in this phase: none. 98 of 100 so far.

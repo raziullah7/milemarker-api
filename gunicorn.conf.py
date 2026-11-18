@@ -35,7 +35,8 @@ def _log_level() -> str:
 
 # Two worker processes by default (NFR-19), each with four threads: eight requests at once,
 # so a hung routing server cannot take every slot from the health check (Q0a-25).
-# An empty value counts as not set, because Compose passes the variable through.
+# gunicorn reads WEB_CONCURRENCY itself as it loads, before this file, and fails on an empty
+# or non-numeric value; the Compose file therefore gives it 2 when nothing sets it.
 workers = _workers()
 worker_class = "gthread"
 threads = 4
