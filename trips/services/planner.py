@@ -18,8 +18,9 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db import DatabaseError, connection
 
+from config.cache import cache_state
 from stations.exceptions import StationsNotLoaded
-from stations.index import get_index, nearest_station
+from stations.index import fingerprint, get_index, nearest_station
 from stations.places import Place, resolve
 from stations.types import StationIndex
 from trips.exceptions import InvalidRequest, RouteLeavesUSA
@@ -73,9 +74,9 @@ def plan_trip(start_text: str, finish_text: str, stop_cost: Decimal) -> dict:
     """Plan a trip and return the whole response body, including `meta`.
 
     Order of work, so that nothing knowable before the routing call is raised after it:
-    resolve start, resolve finish, same-place check, answer cache, stations loaded and
-    nearest station to the start, road (cache or one routing call), border check,
-    stations along the road, fuel plan, answer.
+    resolve start, resolve finish, same-place check, stations loaded, answer cache, nearest
+    station to the start, road (cache or one routing call), border check, stations along
+    the road, fuel plan, answer.
 
     Raises the errors in stations/exceptions.py and trips/exceptions.py.
     """
@@ -89,22 +90,27 @@ def plan_trip(start_text: str, finish_text: str, stop_cost: Decimal) -> dict:
     if _spot(start) == _spot(finish):
         raise InvalidRequest(SAME_PLACE, fields={"finish": [SAME_PLACE]})
 
-    # 3. Answer cache. The body shows both labels, so they are part of its key: two places
-    # can share coordinates (Ackermanville and Flicksville, PA do) and must not serve each
-    # other's label. The road depends only on the coordinates.
+    # 3. Stations, before the answer cache: the answer's key carries their fingerprint.
+    index = get_index()
+
+    # 4. Answer cache. The cache can outlive this process (Redis), so the key carries a
+    # fingerprint of the station data: an answer computed from other prices is never served
+    # (D-15). The code's version is in every key already (settings.CACHE_KEY_VERSION). The
+    # body shows both labels, so they are part of the key too: two places can share
+    # coordinates (Ackermanville and Flicksville, PA do) and must not serve each other's
+    # label. The road depends only on the coordinates.
     trip_key = f"{_spot(start)};{_spot(finish)}"
     labels = f"{quote(start.label)};{quote(finish.label)}"
-    answer_key = f"answer:{trip_key}:{labels}:{stop_cost:.2f}"
+    answer_key = f"answer:{trip_key}:{fingerprint(index)}:{labels}:{stop_cost:.2f}"
     cached = cache.get(answer_key)
     if cached is not None:
         body, server = cached
         return _with_meta(body, started, server, cache_hit=True)
 
-    # 4. Stations, and the one nearest the start, where the first fill-up is priced.
-    index = get_index()
+    # 5. The station nearest the start, where the first fill-up is priced.
     start_station, first_fill_miles = nearest_station(index, start.lat, start.lng)
 
-    # 5. The road: from the cache, or from one routing call.
+    # 6. The road: from the cache, or from one routing call.
     road_key = f"road:{trip_key}"
     road = cache.get(road_key)
     routing_calls, routing_seconds = 0, 0.0
@@ -112,16 +118,16 @@ def plan_trip(start_text: str, finish_text: str, stop_cost: Decimal) -> dict:
         road, routing_calls, routing_seconds = _fetch_road(start, finish)
         cache.set(road_key, road, settings.TRIP_CACHE_SECONDS)
 
-    # 6. Stations along the road.
+    # 7. Stations along the road.
     along = stations_along(
         road.points, index, radius_miles=SEARCH_RADIUS_MILES, exclude=start_station
     )
     every_station = _fuel_list(index, start_station, along)
 
-    # 7. The free-stops plan. It raises NoFuelPlan if no plan exists at all.
+    # 8. The free-stops plan. It raises NoFuelPlan if no plan exists at all.
     free_plan = cheapest_fuel(every_station.miles, every_station.prices, road.distance_miles)
 
-    # 8. The plan.
+    # 9. The plan.
     if stop_cost == 0:
         chosen_from, purchases = every_station, free_plan
     else:
@@ -129,7 +135,7 @@ def plan_trip(start_text: str, finish_text: str, stop_cost: Decimal) -> dict:
             index, every_station, road.distance_miles, stop_cost
         )
 
-    # 9. The answer.
+    # 10. The answer.
     body = build_answer(
         start=start,
         finish=finish,
@@ -143,7 +149,7 @@ def plan_trip(start_text: str, finish_text: str, stop_cost: Decimal) -> dict:
         stop_cost=stop_cost,
     )
 
-    # 10. Cache the body, then add meta.
+    # 11. Cache the body, then add meta.
     cache.set(answer_key, (body, road.server), settings.TRIP_CACHE_SECONDS)
     return _with_meta(
         body,
@@ -155,10 +161,21 @@ def plan_trip(start_text: str, finish_text: str, stop_cost: Decimal) -> dict:
     )
 
 
+def health() -> dict:
+    """The answer of GET /api/v1/health/ (FR-20): the stations in this process's index, and
+    where its cache is ("memory", "redis" or "fallback", architecture section 11).
+
+    Asking loads the index if it is not loaded yet, as a trip does. Raises
+    StationsNotLoaded if the table is empty.
+    """
+    return {"status": "ok", "stations": len(get_index()), "cache": cache_state()}
+
+
 def warm_up() -> None:
     """Load now what the first request would otherwise wait for: the places table, the
     border outlines, the URL configuration (which imports the views and, through them,
-    scipy) and the station index. Called once when the server starts (config/wsgi.py).
+    scipy), the station index and its fingerprint. Called once when the server starts
+    (config/wsgi.py).
 
     The server may start before load_stations has run, or before the database is up. Then
     one line is logged and nothing is raised: the first request that needs the stations
@@ -168,7 +185,7 @@ def warm_up() -> None:
     _borders()
     import_module(settings.ROOT_URLCONF)
     try:
-        get_index()
+        fingerprint(get_index())
     except (StationsNotLoaded, DatabaseError) as error:
         logger.warning(
             "Stations not loaded at start-up (%s); the first request that needs them will "

@@ -18,7 +18,8 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:17
+        # The same image as docker-compose.yml, by digest.
+        image: postgres:17@sha256:0d938e975177bef9f1f61f3f9dbcf2e0aa0a139568f66d3415ed8892eb97f6ac
         # Same user, password and database as docker-compose.yml: the default DATABASE_URL.
         env:
           POSTGRES_USER: milemarker
@@ -28,6 +29,17 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd "pg_isready -h 127.0.0.1 -U milemarker -d milemarker"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      # For the Redis tests, which use its database 15 at the default REDIS_TEST_URL. The
+      # suite never sets REDIS_URL: every other test runs on the in-memory cache.
+      redis:
+        image: redis:8.10.3-alpine@sha256:7958cfbb9d152f87dadfbc89f1b0b15938f0b81ff8982feb327476f4911935c3
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
@@ -45,6 +57,9 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy
       - run: uv run python manage.py makemigrations --check --dry-run
+      # A warning fails it too; each silenced check has its reason in config/settings.py.
+      - name: Deployment check
+        run: uv run python manage.py check --deploy --fail-level WARNING
       - name: Tests with coverage
         run: uv run pytest --cov
       - name: Coverage in the job summary
@@ -62,9 +77,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      - uses: docker/build-push-action@v7
+      - name: Running image
+        uses: docker/build-push-action@v7
         with:
           context: .
+          target: runtime
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Test image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: test
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -79,11 +104,11 @@ jobs:
       - name: Start the end-to-end stack
         run: $COMPOSE up --build -d
       - name: Wait for the API
-        # The first start loads the stations, so allow a few minutes. Any HTTP answer means
-        # the API is up: without parameters the route answers 400, so no -f here.
+        # The setup service loads the stations first, so allow a few minutes. The health
+        # address answers 200 once this worker has its stations, and 503 before.
         run: |
           for i in $(seq 1 60); do
-            if curl -sS -o /dev/null http://127.0.0.1:8000/api/v1/route/; then exit 0; fi
+            if curl -fsS http://127.0.0.1:8000/api/v1/health/; then exit 0; fi
             sleep 5
           done
           echo "The API did not answer in time" >&2

@@ -20,7 +20,7 @@ help:
 	@echo down - Stop the stack, keeping the database volume
 	@echo logs - Follow the API log
 	@echo ps - Show the services and their states
-	@echo dev - Start the database, then run the API from source with auto-reload on port $(DEV_PORT)
+	@echo dev - Start the database and Redis, then run the API from source with auto-reload on port $(DEV_PORT)
 	@echo migrate - Apply migrations, from source
 	@echo load - Load the fuel stations, from source
 	@echo shell - Open a Django shell, from source
@@ -33,7 +33,7 @@ help:
 	@echo typecheck - Run mypy
 	@echo audit - Check the locked dependencies for known faults
 	@echo check - lint, typecheck and test
-	@echo e2e-up - Start the end-to-end stack with the stand-in routing server
+	@echo e2e-up - Start the end-to-end stack with the stand-in routing server, its cache empty
 	@echo e2e-down - Stop the end-to-end stack
 	@echo e2e - Run the whole Postman collection with Newman against the running end-to-end stack
 	@echo live - Run scripts/live_check.py against the running stack. It calls the public routing server
@@ -52,7 +52,7 @@ ps:
 	$(COMPOSE) ps
 
 dev:
-	$(COMPOSE) up -d db
+	$(COMPOSE) up -d db redis
 	uv run python manage.py runserver 127.0.0.1:$(DEV_PORT)
 
 migrate:
@@ -92,8 +92,11 @@ audit:
 
 check: lint typecheck test
 
+# The cache outlives the API, so a run that counts routing requests starts from an empty one:
+# database 1, the end-to-end stack's own (docker-compose.e2e.yml).
 e2e-up:
 	$(E2E_COMPOSE) up --build -d
+	$(E2E_COMPOSE) exec redis redis-cli -n 1 FLUSHDB
 
 e2e-down:
 	$(E2E_COMPOSE) down

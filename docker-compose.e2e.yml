@@ -12,8 +12,10 @@
 
 services:
   fake-osrm:
-    # The API image: it holds scripts/ and the recordings, and needs nothing else to run them.
-    build: .
+    # The test image: it holds scripts/ and the recordings, which the running image does not.
+    build:
+      context: .
+      target: test
     command: ["python", "scripts/fake_osrm.py", "--port", "5000"]
     ports:
       # On 127.0.0.1 only, so the request log can be read from this machine.
@@ -36,6 +38,10 @@ services:
       # The stand-in alone: with no second entry, nothing here can fall back to a public server.
       # "fake-osrm" is the service name; inside Compose it resolves to that container.
       ROUTING_SERVERS: http://fake-osrm:5000/route/v1/driving/{coords}?overview=full&geometries=geojson
+      # A Redis database of its own. The two stacks share the Redis service, and the cache
+      # outlives the API: in one database the ordinary stack could serve a stand-in's road,
+      # and this stack a public server's.
+      REDIS_URL: redis://redis:6379/1
     depends_on:
       fake-osrm:
         condition: service_healthy

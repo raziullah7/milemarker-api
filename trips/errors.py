@@ -35,6 +35,7 @@ STATUS_FOR_CODE = {
 NOT_FOUND = "There is nothing at this address. Try GET /api/v1/route/?start=...&finish=..."
 INTERNAL_ERROR = "Something went wrong on our side. Please try again later."
 MALFORMED_REQUEST = "The request could not be read: it is too large or malformed."
+HOST_NOT_ALLOWED = "This server does not answer to the host name the request was sent to."
 
 
 def error_body(code: str, message: str, details: dict | None = None) -> dict:
@@ -74,7 +75,7 @@ def handler(exc: Exception, context: dict) -> Response:
 
     if isinstance(exc, SuspiciousOperation):
         # Django would not read the request, for example one with more than 1,000
-        # parameters (TooManyFieldsSent). The client's mistake, not ours: no log.
+        # parameters (TooManyFieldsSent). The client's mistake, not ours: no traceback.
         return _response("invalid_request", MALFORMED_REQUEST, {"fields": {}})
 
     logger.exception("Unexpected failure while answering a request", exc_info=exc)
@@ -82,14 +83,32 @@ def handler(exc: Exception, context: dict) -> Response:
 
 
 def json_error(code: str, message: str) -> JsonResponse:
-    """The standard body as a plain Django response, for views outside the REST framework."""
-    return JsonResponse(error_body(code, message), status=STATUS_FOR_CODE[code])
+    """The standard body as a plain Django response, for views outside the REST framework.
+
+    Written as compactly as the framework writes its own (Q0a-24), so every error body has
+    one form whichever path it took.
+    """
+    _log(code)
+    return JsonResponse(
+        error_body(code, message),
+        status=STATUS_FOR_CODE[code],
+        json_dumps_params={"separators": (",", ":"), "ensure_ascii": False},
+    )
 
 
 def _response(
     code: str, message: str, details: dict | None = None, headers: dict | None = None
 ) -> Response:
     """The standard body in a REST framework response, with the status its code maps to."""
+    _log(code)
     return Response(
         error_body(code, message, details), status=STATUS_FOR_CODE[code], headers=headers
     )
+
+
+def _log(code: str) -> None:
+    """The one line each error answer writes: at WARNING, with its code and no trip figures
+    (architecture section 18). An unexpected failure writes none: it is logged once, in
+    full, at ERROR, where it is caught."""
+    if code != "internal_error":
+        logger.warning("error code=%s status=%s", code, STATUS_FOR_CODE[code])

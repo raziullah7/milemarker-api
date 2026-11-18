@@ -1,17 +1,38 @@
-# Mile Marker API and its PostgreSQL.
+# Mile Marker API, its PostgreSQL and its Redis.
 #
-#   docker compose up --build -d                  build, start the database and the API on port 8000
-#   docker compose logs -f api                    follow the station load, then the server
+#   docker compose up --build -d                  build and start; the API answers on port 8000
+#   docker compose logs -f api                    follow the API's log
 #   docker compose --profile test run --rm test   run the test suite in a container
 #   docker compose down                           stop (add -v to delete the database as well)
-#   docker compose up -d db                       the database alone, to run the API from source
+#   docker compose up -d db redis                 the database and Redis alone, to run from source
+#
+# Start order (architecture section 18): db healthy, then setup (migrate, load the stations,
+# exit), then api once setup has succeeded and Redis has started. Redis need only have
+# started, not be healthy: the API runs without it, on each process's own memory.
 #
 # The user, password and database name below are local development defaults, not secrets.
 # They match the default DATABASE_URL in config/settings.py.
+#
+# Each variable the API reads is passed through from the shell or .env (see .env.example);
+# empty means the API's own default. DATABASE_URL and REDIS_URL name the services here.
+
+x-api-environment: &api-environment
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-}
+  DJANGO_DEBUG: ${DJANGO_DEBUG:-}
+  DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-}
+  # 0 while the API is published itself: trusting a forwarded address with no proxy in
+  # front would let a client choose its own rate-limit bucket. nginx brings 1.
+  DJANGO_NUM_PROXIES: ${DJANGO_NUM_PROXIES:-0}
+  DATABASE_URL: postgresql://milemarker:milemarker@db:5432/milemarker
+  REDIS_URL: redis://redis:6379/0
+  ROUTING_SERVERS: ${ROUTING_SERVERS:-}
+  # Not left empty: gunicorn reads this variable itself as it loads, and fails on "".
+  WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+  LOG_LEVEL: ${LOG_LEVEL:-}
 
 services:
   db:
-    image: postgres:17
+    image: postgres:17@sha256:0d938e975177bef9f1f61f3f9dbcf2e0aa0a139568f66d3415ed8892eb97f6ac
     environment:
       POSTGRES_USER: milemarker
       POSTGRES_PASSWORD: milemarker
@@ -32,31 +53,87 @@ services:
       timeout: 3s
       retries: 10
 
+  redis:
+    image: redis:8.10.3-alpine@sha256:7958cfbb9d152f87dadfbc89f1b0b15938f0b81ff8982feb327476f4911935c3
+    # A cache only: nothing kept on disk, memory capped at 256 MB, and when it is full the
+    # least recently used key goes (architecture section 10).
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+    ports:
+      # On 127.0.0.1 only, for the API run from source and for the tests' own database 15.
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  setup:
+    build:
+      context: .
+      target: runtime
+    environment: *api-environment
+    # Once, before the API starts, not in every worker (NFR-22). load_stations replaces the
+    # table, so running it again on every start never doubles the rows.
+    command: ["sh", "-c", "python manage.py migrate --noinput && python manage.py load_stations"]
+    depends_on:
+      db:
+        condition: service_healthy
+
   api:
-    build: .
-    environment:
-      # "db" is the service name; inside Compose it resolves to the database container.
-      DATABASE_URL: postgresql://milemarker:milemarker@db:5432/milemarker
+    build:
+      context: .
+      target: runtime
+    environment: *api-environment
     ports:
       # On 127.0.0.1 only: this machine, not the network it is on.
       # Set API_PORT if 8000 is already taken.
       - "127.0.0.1:${API_PORT:-8000}:8000"
     restart: unless-stopped
+    # gunicorn gives a request in flight 30 seconds to finish (gunicorn.conf.py); Compose
+    # must wait longer than that before it kills the container. Its own default is 10.
+    stop_grace_period: 35s
     depends_on:
-      db:
-        condition: service_healthy
+      setup:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    healthcheck:
+      # The 5-second timeout and 6 tries outlast the slowest proper answer, about 20 s, so
+      # requests stuck on a hung routing server never make the API look down (Q0a-25).
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/', timeout=5)
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
 
   test:
     build:
       context: .
-      args:
-        WITH_TEST_TOOLS: "1"
+      target: test
     environment:
       DATABASE_URL: postgresql://milemarker:milemarker@db:5432/milemarker
-    # The code directory is read-only for the app user, so pytest cannot keep its cache there.
-    command: ["pytest", "-p", "no:cacheprovider"]
+    # Inside Redis's own network namespace, so the Redis tests find it at 127.0.0.1:6379,
+    # the one address the suite may connect to (pyproject.toml). The database is still
+    # reached by its service name.
+    network_mode: service:redis
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     # Not started by "docker compose up"; only by "--profile test".
     profiles: ["test"]
