@@ -255,6 +255,11 @@ Every figure can be reproduced from the response with a calculator (D-14).
 4. A stop's cost is its gallons × its price, rounded half-up to cents. This is done in decimal arithmetic, not floating point.
 5. The total is the sum of the stop costs.
 
+Two small rules keep the figures sensible:
+
+- A purchase that rounds to 0.00 gallons is not shown as a stop. Its fuel is not lost, because step 2 has already moved the difference to the largest purchase. The fill-up at the start is always shown.
+- The lowest possible bill is never shown above the plan's bill. Each bill is rounded stop by stop, so two plans within a cent of each other can swap order after rounding. The plan's bill can be bought, so it is the lowest in that case.
+
 ## 9. The routing service
 
 **Chosen:** the OSRM public server. Free, no API key, no account. A second server run by FOSSGIS serves the same software and data and takes the one retry. Their paths differ:

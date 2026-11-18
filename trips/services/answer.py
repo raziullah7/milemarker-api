@@ -6,10 +6,11 @@ document, section 8 ("Money and rounding") and section 11 (the response).
 """
 
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from stations.places import Place
 from stations.types import StationInfo
+from trips.services.fuel import MILES_PER_GALLON, RANGE_MILES, TANK_GALLONS
 from trips.services.geo import RoadPoints
 
 # A first fill-up station further from the start than this earns a warning.
@@ -17,6 +18,16 @@ FAR_FIRST_FILL_MILES = 25.0
 
 # A purchase smaller than this is not counted as a stop in the lowest-possible figures.
 SMALLEST_COUNTED_GALLONS = 0.005
+
+# How far either side of the road stations are searched for (trips/services/corridor.py).
+SEARCH_RADIUS_MILES = 5
+
+# Map marker colours, in the "marker-color" property geojson.io reads.
+STOP_COLOUR = "#d9480f"
+START_COLOUR = "#2b8a3e"
+FINISH_COLOUR = "#1864ab"
+
+CENT = Decimal("0.01")
 
 
 @dataclass(frozen=True)
@@ -63,4 +74,181 @@ def build_answer(
     purchase; each cost = gallons x exact price, rounded half-up to cents; the total is
     the sum of the costs.
     """
-    raise NotImplementedError
+    distance = _miles(distance_miles)
+    # The distance has at most 1 decimal, so the total has at most 2 and is exact.
+    total_gallons = _decimal(distance) / _decimal(MILES_PER_GALLON)
+    gallons, costs = _bill([(stop.info.price, stop.gallons) for stop in stops], total_gallons)
+    # A purchase that rounds to 0.00 gallons is not shown as a stop. Its fuel is not lost:
+    # _bill has already given the difference to the largest purchase. Stop 1 always stays,
+    # as it is the start.
+    kept = [
+        (stop, amount, cost)
+        for k, (stop, amount, cost) in enumerate(zip(stops, gallons, costs, strict=True))
+        if k == 0 or amount > 0
+    ]
+    total_cost = sum(cost for _, _, cost in kept)
+
+    _, lowest_costs = _bill(cheapest, total_gallons)
+    lowest_cost = sum(lowest_costs)
+    # Tiny purchases still count in the bill above; they are just not worth calling a stop.
+    lowest_stops = max(1, sum(amount >= SMALLEST_COUNTED_GALLONS for _, amount in cheapest))
+    # Each bill is rounded stop by stop, so when the two plans' exact bills are within a
+    # cent or two, the free-stops bill can come out above the plan's. The plan's own bill
+    # can be bought, so the lowest possible is never more than it: show the plan's figures.
+    if lowest_cost > total_cost:
+        lowest_cost, lowest_stops = total_cost, len(kept)
+
+    first_fill = _miles(first_fill_miles)
+    # The rounded figure decides, so the warning always agrees with the figure shown.
+    warnings = []
+    if first_fill > FAR_FIRST_FILL_MILES:
+        station = stops[0].info
+        warnings.append(
+            f"The nearest listed fuel station to the start is {station.name} in "
+            f"{station.city}, {station.state}, {first_fill:.1f} miles away. "
+            "The first fill-up is priced there."
+        )
+
+    fuel_stops = [
+        {
+            "order": order,
+            "kind": "start" if order == 1 else "station",
+            "station_id": stop.info.opis_id,
+            "name": stop.info.name,
+            "address": stop.info.address,
+            "city": stop.info.city,
+            "state": stop.info.state,
+            "mile_marker": _miles(stop.mile),
+            "lat": _coordinate(stop.lat),
+            "lng": _coordinate(stop.lng),
+            "price_per_gallon": float(stop.info.price),
+            "gallons": float(amount),
+            "cost": float(cost),
+        }
+        for order, (stop, amount, cost) in enumerate(kept, start=1)
+    ]
+
+    return {
+        "summary": {
+            "start": _place(start),
+            "finish": _place(finish),
+            "distance_miles": distance,
+            "gallons": float(sum(amount for _, amount, _ in kept)),
+            "total_fuel_cost": float(total_cost),
+            "stops": len(fuel_stops),
+            "lowest_possible_fuel_cost": float(lowest_cost),
+            "lowest_possible_stops": lowest_stops,
+            "first_fill_distance_miles": first_fill,
+        },
+        "warnings": warnings,
+        "assumptions": {
+            "range_miles": int(RANGE_MILES),
+            "miles_per_gallon": int(MILES_PER_GALLON),
+            "tank_gallons": int(TANK_GALLONS),
+            "starting_fuel_gallons": 0,
+            "stop_cost": float(stop_cost),
+            "search_radius_miles": SEARCH_RADIUS_MILES,
+        },
+        "fuel_stops": fuel_stops,
+        "map": _map(start, finish, distance, road, fuel_stops),
+    }
+
+
+def _bill(
+    purchases: list[tuple[Decimal, float]], total_gallons: Decimal
+) -> tuple[list[Decimal], list[Decimal]]:
+    """Round (exact price, exact gallons) purchases to (gallons, costs) in the response.
+
+    Gallons are rounded half-up to 2 decimals. Rounding can leave them a few hundredths
+    away from total_gallons, so the difference goes to the largest purchase (the earliest,
+    on a tie), where it changes the least. Each cost is then its rounded gallons x its
+    exact price, so anyone can check it from the response.
+    """
+    gallons = [_half_up(_decimal(amount), CENT) for _, amount in purchases]
+    largest = gallons.index(max(gallons))
+    gallons[largest] += total_gallons - sum(gallons)
+    costs = [
+        _half_up(amount * price, CENT)
+        for amount, (price, _) in zip(gallons, purchases, strict=True)
+    ]
+    return gallons, costs
+
+
+def _map(
+    start: Place, finish: Place, distance_miles: float, road: RoadPoints, fuel_stops: list[dict]
+) -> dict:
+    """The route, the stops, the start and the finish as a GeoJSON FeatureCollection."""
+    line = [
+        [_coordinate(lng), _coordinate(lat)]
+        for lng, lat in zip(road.lng.tolist(), road.lat.tolist(), strict=True)
+    ]
+    features = [_feature("LineString", line, {"kind": "route", "distance_miles": distance_miles})]
+    for stop in fuel_stops:
+        properties = {
+            "kind": "stop",
+            "order": stop["order"],
+            "title": f"{stop['order']}. {stop['name']}, {stop['city']} {stop['state']}",
+            "name": stop["name"],
+            "mile_marker": stop["mile_marker"],
+            "price_per_gallon": stop["price_per_gallon"],
+            "gallons": stop["gallons"],
+            "cost": stop["cost"],
+            "marker-color": STOP_COLOUR,
+        }
+        features.append(_feature("Point", [stop["lng"], stop["lat"]], properties))
+    for kind, place, colour in (("start", start, START_COLOUR), ("finish", finish, FINISH_COLOUR)):
+        properties = {
+            "kind": kind,
+            "title": f"{kind.capitalize()}: {place.label}",
+            "marker-color": colour,
+        }
+        coordinates = [_coordinate(place.lng), _coordinate(place.lat)]
+        features.append(_feature("Point", coordinates, properties))
+    return {"type": "FeatureCollection", "features": features}
+
+
+def _feature(geometry_type: str, coordinates: list, properties: dict) -> dict:
+    """One GeoJSON feature. Properties come before the geometry, so the short part is
+    read first and the route's long list of coordinates comes last."""
+    return {
+        "type": "Feature",
+        "properties": properties,
+        "geometry": {"type": geometry_type, "coordinates": coordinates},
+    }
+
+
+def _place(place: Place) -> dict:
+    """A start or finish place as the summary shows it."""
+    return {"label": place.label, "lat": _coordinate(place.lat), "lng": _coordinate(place.lng)}
+
+
+def _decimal(number: float) -> Decimal:
+    """A float as the decimal it prints as: 10.004 is read as 10.004, not as the binary
+    value 10.00399999... that Decimal(10.004) would give."""
+    return Decimal(str(number))
+
+
+def _half_up(number: Decimal, step: Decimal) -> Decimal:
+    """Round to a multiple of `step`, halves going up, as a person rounds by hand."""
+    return number.quantize(step, rounding=ROUND_HALF_UP)
+
+
+def _miles(miles: float) -> float:
+    """Miles to 1 decimal.
+
+    Miles and coordinates are measurements, not money: nothing a reader checks with a
+    calculator depends on which way a half rounds (the trip length arrives already
+    rounded), so Python's round() (to the nearest, ties to even) is enough for them.
+    """
+    return round(float(miles), 1)
+
+
+def _coordinate(degrees: float) -> float:
+    """A latitude or longitude to 5 decimals, about a metre.
+
+    Every coordinate in the response goes through here, so a stop placed on a road point
+    has exactly the coordinates that point has in the route line. round() and not
+    Decimal: a coast-to-coast line has over 11,000 numbers, and round() takes a third of
+    the time (measured: 4 ms against 12 ms).
+    """
+    return round(float(degrees), 5)
