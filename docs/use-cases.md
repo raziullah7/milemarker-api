@@ -222,7 +222,7 @@ Every successful response is also checked against the correctness rules R1 to R1
 - A2. An unknown extra parameter is sent: it is ignored, and the cache entry is used.
 - A3. `stop_cost` is sent as `10` or `10.00`: the same entry as the default.
 - A4. More than 24 hours have passed, or the trip is reversed: the answer is made again, with one routing call.
-- A5. The earlier request failed: errors are not cached, so this one is planned afresh.
+- A5. The earlier request failed in routing: a routing failure is not cached, so this one is planned afresh. A trip refused after routing is cached, and is refused again with no routing call.
 
 **Requirements:** FR-13, NFR-2, NFR-11, D-15
 
@@ -324,7 +324,7 @@ Every successful response is also checked against the correctness rules R1 to R1
 
 **Alternative flows**
 
-- A1. No state given (`Chicago`): the suggestions are that city name in every state that has it, here `["Chicago, IL"]`.
+- A1. No state given (`Chicago`): the suggestions are that city name in the states that have it, the most populous first, up to five (`Dallas` gives `Dallas, TX` first). If no state has the name (`Dalas`), they are the close names among the large places, largest first.
 - A2. Both places are wrong: the error names `start`.
 - A3. Only the finish is wrong: the error names `finish`.
 - A4. A ZIP code or a street address is sent: `unknown_place`, as neither is accepted.
@@ -510,7 +510,7 @@ Every successful response is also checked against the correctness rules R1 to R1
 
 - A1. A US station's city cannot be placed: the command lists it and exits with an error, and the table keeps what it held.
 - A2. The command is run again: the table is replaced, still 6,626 rows.
-- A3. A trip is requested before the stations are loaded: 503 `stations_not_loaded`, with no routing call. Once they are loaded, requests work without a restart.
+- A3. A trip is requested before the stations are loaded, or while the database cannot be read: 503 `stations_not_loaded`, with no routing call. Once the stations can be read, requests work without a restart.
 - A4. With the table empty, an unknown place still gets 400 `unknown_place`, because places are checked first.
 
 **Requirements:** FR-9, NFR-7, NFR-10, D-5, D-6, D-13
@@ -604,7 +604,7 @@ Release 2 supersedes this use case with UC-36: Redis and a one-off setup service
 **Alternative flows**
 
 - A1. Two aliases of one place (`New York City, NY` and `Manhattan, NY`): the same error.
-- A2. Two different places whose road is shorter than half a mile: treated as the same place, the same error, after one routing call.
+- A2. Two different places whose road is shorter than half a mile: treated as the same place, the same error, after one routing call; a repeat is refused from the cache.
 
 **Requirements:** FR-11
 
@@ -1044,7 +1044,7 @@ There is no form and no text field: a trip is named only by its address (D-19).
 
 **Alternative flows**
 
-- A1. The stations are not loaded: 503 `stations_not_loaded` in the standard error shape. Once they are loaded, 200, with no restart.
+- A1. The stations are not loaded, or the database cannot be read: 503 `stations_not_loaded` in the standard error shape. Once they can be read, 200, with no restart.
 - A2. The client has been rate limited on other addresses: health still answers. It is never limited.
 - A3. In Compose, `api` counts as healthy once this answers within 5 seconds.
 

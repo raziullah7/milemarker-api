@@ -55,7 +55,7 @@ Shortened:
 docker compose --profile test run --rm test
 ```
 
-597 tests, about two minutes. None of them reaches the internet.
+656 tests, about two minutes. None of them reaches the internet.
 
 ## How it works
 
@@ -76,7 +76,7 @@ The task asked for the route, the stops and the cost, quickly, with as few routi
 |---|---|
 | A cost per stop | The cheapest plan on paper is not one a driver would follow (above) |
 | Redis, shared by two workers | A repeat is a cache hit whichever worker answers. If Redis is down the API carries on from memory |
-| A rate limit of 60 requests a minute | The free routing servers ask for no more than one request a second |
+| A rate limit of 60 requests a minute per client | It keeps one client from leaning on the free routing servers through us. It does not pace routing calls to one a second |
 | A docs page | So the API can be tried without reading anything |
 | An independent checker, [`tests/verify.py`](tests/verify.py) | It tests every answer against 17 rules and shares no code with the API |
 | CI on every push | Lint, types, tests, the image build, and the Postman collection run against recorded roads |
@@ -86,15 +86,16 @@ The task asked for the route, the stops and the cost, quickly, with as few routi
 
 The task left some things open. The ones that matter most:
 
-- The tank is empty at the start, so the first fill-up is at the station nearest the start.
+- The tank is empty at the start, so the first fill-up is at the station nearest the start. Stop 1 is drawn at the start and priced at that station.
 - A station is placed at the centre of its city: the supplied file has no coordinates.
 - Places are a city and state in the lower 48 states and DC. Street addresses and ZIP codes are not understood.
-- A road that runs through Canada or Mexico is refused.
+- A road is refused only if it runs through Canada or Mexico for more than 25 miles in a row.
 
 All the decisions, each with the measurement behind it, are in [`docs/requirements.md`](docs/requirements.md).
 
 ## Known limits
 
+- The detour from the road to a station, at most 5 miles each way, counts in neither the range nor the bill.
 - Station positions are city centres, a median 2.8 miles from the real station, and there is no reserve on the 500-mile range.
 - Some roads have no fuel listed, such as Interstate 5 through California. Los Angeles to Seattle has no plan, and the API says so.
 - Routing is for cars, not trucks, and the free routing servers promise no uptime.

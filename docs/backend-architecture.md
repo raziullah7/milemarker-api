@@ -117,7 +117,7 @@ milemarker-api/
 | 1 | Validate input | `serializers.py` | `start` and `finish` are required text. `stop_cost` is an optional decimal with at most 2 decimal places, 0 to 100 inclusive, default 10. Unknown parameters are ignored. |
 | 2 | Resolve places | `stations/places.py` | Offline lookup (section 6). Start is resolved first, so if both are bad the error names `start`. |
 | 3 | Same place | `planner.py` | If both resolve to the same coordinates (to 4 decimals), the request is invalid. The error is reported against `finish`. |
-| 4 | Stations loaded | `stations/index.py` | Load on first use. An empty table is an error, raised here, before the cache is read and before any routing call. The answer's cache key carries a fingerprint of the stations (section 10), so they come first. |
+| 4 | Stations loaded | `stations/index.py` | Load on first use. An empty table, or a database that cannot be read, is an error (`stations_not_loaded`), raised here, before the cache is read and before any routing call. The answer's cache key carries a fingerprint of the stations (section 10), so they come first. |
 | 5 | Answer cache, then the start's station | `planner.py`, `stations/index.py` | A hit returns at once (section 10). Otherwise find the station nearest the start place. Several stations often share the nearest position; the cheapest of them is used, then the lowest station ID. |
 | 6 | Get the road | `routing.py`, `geo.py` | From the road cache, or one routing call (section 9). Then re-space it to one point every half mile, each with its mile marker. |
 | 7 | Border check | `geo.py` | Reject if more than 25 miles in a row lie inside Canada or Mexico (D-4). |
@@ -127,7 +127,7 @@ milemarker-api/
 
 **Why re-space the road.** The routing service returns points bunched in curves and sparse on straights: 34,931 points for New York to Los Angeles (*measured*). One point every half mile gives 5,594 points. That makes "nearest point on the road" accurate to a quarter mile, gives every point a mile marker, and is also the line returned in the response (127 KB of JSON, down from 861 KB).
 
-**One length, not two.** The routing service's distance, rounded to 0.1 mile, is the trip length `L`. The road is re-spaced on our own distance sums, the markers are then scaled so the last one is `L`, and the last marker is set to `L` exactly. Our own sum differs from the service's figure by at most 0.19% (*measured* on six routes). A road shorter than half a mile is treated as the same place: the request is answered as invalid, after the one routing call that revealed it.
+**One length, not two.** The routing service's distance, rounded to 0.1 mile, is the trip length `L`. The road is re-spaced on our own distance sums, the markers are then scaled so the last one is `L`, and the last marker is set to `L` exactly. Our own sum differs from the service's figure by at most 0.19% (*measured* on six routes). A road shorter than half a mile is treated as the same place: the request is answered as invalid, after the one routing call that revealed it. The refusal is cached in the road's place (section 10).
 
 ## 6. The offline path: seed data
 
@@ -162,7 +162,7 @@ The price is stored exactly as the CSV has it (up to 8 decimal places).
 
 - **Found:** the coordinates and a label in the table's own spelling, `City, ST`. The table's spelling is plain: `Saint Louis, MO`, `Winston Salem, NC`, `Mcallen, TX`.
 - **Alaska, Hawaii, Puerto Rico, a Canadian province, or a final part that is `Canada` or `Mexico`:** outside coverage. With no comma, a last word `Canada` or `Mexico` counts only if the text did not end in USA: the caller said the place is in the United States. So `Mexico, USA` is an unknown place, with the US places called Mexico as suggestions, and `Tijuana Mexico USA` an unknown place with none; `Tijuana, Mexico, USA` is still outside coverage.
-- **Anything else:** unknown place, with up to five suggestions as `City, ST`. With a known state they are the closest names in that state. With no state, or a state that is not recognised, they are that city name in the states that have it (`Chicago` → `Chicago, IL`).
+- **Anything else:** unknown place, with up to five suggestions as `City, ST`. With a known state they are the closest names in that state. With no state, or a state that is not recognised, they are that city name in the states that have it, the most populous first by US Census population (`data/large_places.csv`, the 748 places of 50,000 or more), then by state code (`Dallas` → `Dallas, TX` first). If no state has that name, they are the close names among those large places only, largest first (`Dalas` → `Dallas, TX`).
 
 **Positions:**
 
@@ -176,7 +176,7 @@ The price is stored exactly as the CSV has it (up to 8 decimal places).
 
 - The server asks for it as it starts. `config/wsgi.py`, which only a server goes through, calls `warm_up()`: it loads the places table, the border outlines, the views and the station index, so the first request is as fast as any other (about 20 ms of our own work, against about 290 without it; *measured*). Start-up takes 2 to 3 seconds. `migrate`, `load_stations` and the tests do not go through that file.
 - Because `warm_up()` touches the database, the server must not be run with gunicorn's `--preload` option, which would open the connection before the worker process exists.
-- An empty table is never remembered. If the server starts before the stations are loaded, requests get a clear error until `load_stations` has run, and then work without a restart.
+- An empty table, or a database that cannot be read, is never remembered. If the server starts before the stations are loaded, or while the database is down, requests get a clear error (one warning is logged) until the stations can be read, and then work without a restart.
 - After reloading the stations, the server must be restarted to pick up the change.
 
 ## 7. Finding stations along the route
@@ -254,7 +254,7 @@ answer = best(start, 0)
 
 The fuel on arrival is only ever 0, or "a full tank minus the drive from the station where it was filled". So there is one case per (station, station where the tank was last filled), and each is worked out once. This is dynamic programming. It is written as a loop from the last station back to the first, not as a function that calls itself, so it never depends on the interpreter's recursion limit. With 98 candidate stations it takes 4 ms (*measured*).
 
-The plan is computed on the thinned list. If the thinned list has no plan but the full list does, it is computed on the full list. That is slow (about half a second coast to coast, *measured*) and rare, and it is the price of never reporting "no plan" wrongly.
+The plan is computed on the thinned list. If the thinned list has no plan but the full list does, it is computed on the full list. That is slow (180 to 350 ms on coast-to-coast roads, *measured*) and rare: none of the recorded roads triggers it, and it is the price of never reporting "no plan" wrongly.
 
 **When the stop cost is zero** the thinned list is not used at all. The plan is the greedy result described next, on every station, so the plan's bill and the lowest possible bill are the same figure (FR-16).
 
@@ -310,7 +310,7 @@ Both templates are settings, and each has its own test.
 - **If both fail:** one error, `routing_unavailable`. Its reason is `timeout` only when every attempt timed out, and `error` otherwise.
 - **One shared HTTP client** (`httpx`) keeps the connection open between requests, so later calls skip the connection set-up.
 - **A User-Agent naming the app** is sent, because the second server's rules ask applications to identify themselves. It is a setting.
-- **Usage rules:** both servers ask for no more than one request a second and promise no uptime. The caches and the request rate limit (NFR-16) keep us inside that.
+- **Usage rules:** both servers ask for no more than one request a second and promise no uptime. The caches keep the calls few. The rate limit (NFR-16) keeps one client from leaning on the free servers through us; it does not hold routing calls to one a second, since one client can send 60 requests in a second and up to 8 routing calls run at once.
 
 **Rejected:**
 
@@ -325,12 +325,12 @@ Two caches, both in Django's cache framework, both for 24 hours. Prices come fro
 
 | Cache | Key | Holds | Effect |
 |---|---|---|---|
-| Road | A version number, and the start and finish coordinates, 4 decimals | The re-spaced road, its length, and the server that supplied it | The same trip with a different stop cost makes no routing call |
+| Road | A version number, and the start and finish coordinates, 4 decimals | The re-spaced road, its length, and the server that supplied it; or the refusal, for a road that leaves the USA, has no route, or is under half a mile | The same trip with a different stop cost makes no routing call |
 | Answer | The road key, a fingerprint of the station data, both place labels, and the stop cost to 2 decimals | The response body without `meta` | A repeated request skips all the arithmetic too (NFR-11) |
 
 - `meta` is rebuilt for every response. `cache_hit` says whether the answer came from the answer cache. When only the road was cached, `cache_hit` is false and `routing_calls` is 0. `timings_ms.routing` is 0 whenever no routing call was made.
 - Place labels are part of the answer key, because two places can share coordinates (Ackermanville and Flicksville, PA do). They are always the table's own spelling, so `new york ny` and `New York, NY` share one cached answer.
-- Errors are not cached, but the road is cached before the fuel plan is tried. A trip with no fuel plan therefore makes no routing call when it is asked for again. Only a road refused for leaving the USA, and a routing call that failed, are asked for again each time.
+- A refusal after routing (the road leaves the USA, there is no road, or the road is under half a mile) is cached in the road's place, so a repeat makes no routing call and gets the identical answer. The road is also cached before the fuel plan is tried, so a trip with no fuel plan makes no routing call when it is asked for again. Only a routing failure is never cached: it is asked for again each time (EP-08).
 
 ### Where the caches live (D-15)
 
@@ -455,7 +455,7 @@ Every error has the same body, whatever raised it:
 | 429 | `rate_limited` | Too many requests from one client | `retry_after_seconds` |
 | 500 | `internal_error` | Anything unexpected | — |
 | 502 | `routing_unavailable` | Both routing servers failed or timed out | `reason`: `timeout` or `error` |
-| 503 | `stations_not_loaded` | `load_stations` has not been run | — |
+| 503 | `stations_not_loaded` | `load_stations` has not been run, or the database cannot be read | — |
 
 `trips/errors.py` holds the table from code to status and builds this body. It also turns the framework's own errors (validation, rate limit, wrong method, unexpected failure) into the same shape. An unexpected failure is logged in full and answered with `internal_error` and no detail. A catch-all route answers every unknown address with `not_found`. Neither depends on Django's debug setting.
 
@@ -464,7 +464,7 @@ Two answers come from outside the route's view. The first is in the same shape:
 - **A host that is not allowed.** A request whose `Host` is not in `DJANGO_ALLOWED_HOSTS` gets 400 `invalid_request`, with empty `details` (D-21). Django's own 400 page is replaced by a handler (`handler400`) that answers in this shape. No 403 handler is set: nothing in the API can answer 403.
 - **A request line over 8,190 bytes.** gunicorn answers it itself with an HTML 414 that cannot be changed (`gunicorn.conf.py`). It is not in the API's shape (section 16).
 
-Only GET is specified. HEAD and OPTIONS are left to the framework's defaults; every other method gets `method_not_allowed`.
+Only GET is specified. OPTIONS is left to the framework's default. HEAD is answered as GET without the body (RFC 9110, section 9.1), so a HEAD for a new trip makes its routing call, and the result is cached. Every other method gets `method_not_allowed`.
 
 `timings_ms.own` is our own work up to the point the answer is handed to the framework. It does not include writing the JSON.
 
@@ -478,7 +478,7 @@ Only GET is specified. HEAD and OPTIONS are left to the framework's defaults; ev
 
 The schema and the Swagger page are limited like the route, against the same count. The health address is exempt. An unknown address (404) and a host that is not allowed (400) are answered before any view runs, and are not counted either (section 10).
 
-**The health answer.** `stations` is the number of stations in the in-memory index. Asking for it loads the index if it is not loaded yet, as a route request does, so the Django ORM is still used in only the two places of section 3, and an empty table gives `stations_not_loaded`. `cache` describes the worker process that answered:
+**The health answer.** `stations` is the number of stations in the in-memory index. Asking for it loads the index if it is not loaded yet, as a route request does, so the Django ORM is still used in only the two places of section 3, and an empty table, or a database that cannot be read, gives `stations_not_loaded`. `cache` describes the worker process that answered:
 
 | `cache` | Meaning |
 |---|---|
@@ -493,8 +493,8 @@ The health check makes one cheap cache read before it answers, so the state it r
 - `drf_spectacular` in the installed apps, a `TEMPLATES` entry with `APP_DIRS`, and `DEFAULT_SCHEMA_CLASS` in the REST framework settings.
 - Its routes placed before the include of `trips.urls`, whose last pattern is the catch-all and matches everything.
 - The route view is a plain `APIView`, so the tool cannot guess its parameters or its response. They are declared by hand with `extend_schema`, in `trips/schema.py`: the three parameters, the 200 body, and the error answers in the standard error shape. Until they are declared, `spectacular --validate --fail-on-warn` reports one error.
-- The route lists 400, 422, 429, 500, 502 and 503, each with every code it can carry. Its 503 is `stations_not_loaded` only. `not_found` is not listed on the route, because the route's address exists. `not_found` and `method_not_allowed` are described in the document's opening text.
-- The Swagger page loads its script from a CDN at `@latest` by default. `SWAGGER_UI_DIST` pins it to one version.
+- The route lists 400, 422, 429, 500, 502 and 503, each with every code it can carry. Its 503 is `stations_not_loaded` only: the table is empty, or the database cannot be read. `not_found` is not listed on the route, because the route's address exists. `not_found` and `method_not_allowed` are described in the document's opening text.
+- The Swagger page loads its script from a CDN at `@latest` by default. `SWAGGER_UI_DIST` pins it to one version. Its three files carry no integrity hash.
 
 The document is committed as `docs/openapi.yaml`. A test fails if it and the code disagree.
 
@@ -684,7 +684,7 @@ All of it comes from the environment (NFR-20). Every default makes a fresh clone
 | `DJANGO_DEBUG` | Off | Django's debug mode |
 | `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1,[::1]` | The host names the API answers to. Any other gets 400 `invalid_request` (D-21). `127.0.0.1` is always allowed, whatever the variable says: the container's health check asks under that name |
 | `DJANGO_NUM_PROXIES` | `0`; the Compose file also sets `0` | How many proxies in front of the API to trust when finding a client's address for the rate limit (D-17) |
-| `DATABASE_URL` | `postgresql://milemarker:milemarker@127.0.0.1:5432/milemarker`; the Compose file points it at `db`. The address is `127.0.0.1`, not `localhost`: the database is published on `127.0.0.1` only, and a machine that tries IPv6 first for `localhost` waits seconds on every connection | The PostgreSQL connection (NFR-10) |
+| `DATABASE_URL` | `postgresql://milemarker:milemarker@127.0.0.1:5432/milemarker`; the Compose file points it at `db`. The address is `127.0.0.1`, not `localhost`: the database is published on `127.0.0.1` only, and a machine that tries IPv6 first for `localhost` waits seconds on every connection | The PostgreSQL connection (NFR-10). Unless the URL sets one, the connection gives up after 5 seconds (`connect_timeout`) |
 | `REDIS_URL` | Unset: each process uses its own memory | The Redis that holds the caches and the rate-limit counters (D-15). The Compose file points it at `redis` |
 | `ROUTING_SERVERS` | The two public servers of section 9 | The routing servers: URL templates separated by commas, each containing `{coords}`, tried in order. The end-to-end run points it at the stand-in |
 | `WEB_CONCURRENCY` | 2 | The number of gunicorn worker processes (NFR-19). A whole number of 1 or more |

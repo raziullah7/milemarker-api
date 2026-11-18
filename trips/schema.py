@@ -297,7 +297,8 @@ class RouteAnswerSerializer(serializers.Serializer):
 
 class HealthSerializer(serializers.Serializer):
     status = _only(
-        "ok", help_text="Always ok: when the stations are not loaded the answer is a 503."
+        "ok",
+        help_text="Always ok: when the stations are not loaded or cannot be read the answer is a 503.",
     )
     stations = serializers.IntegerField(
         help_text="Stations in the index of the worker that answered."
@@ -449,13 +450,15 @@ Error502 = _error_body(
 Error503 = _error_body(
     "503",
     {
-        "stations_not_loaded": "the station table is empty: `load_stations` has not been run",
+        "stations_not_loaded": "the station table is empty (`load_stations` has not been run), or the database cannot be read",
     },
     NoDetails,
 )
 HealthError503 = _error_body(
     "503Health",
-    {"stations_not_loaded": "the station table is empty: `load_stations` has not been run"},
+    {
+        "stations_not_loaded": "the station table is empty (`load_stations` has not been run), or the database cannot be read"
+    },
     NoDetails,
 )
 
@@ -857,7 +860,10 @@ route_schema = extend_schema(
         ),
         503: OpenApiResponse(
             Error503,
-            description="The station table is empty: `load_stations` has not been run.",
+            description=(
+                "The station table is empty (`load_stations` has not been run), "
+                "or the database cannot be read."
+            ),
             examples=_examples(503),
         ),
     },
@@ -885,7 +891,7 @@ health_schema = extend_schema(
         ),
         503: OpenApiResponse(
             HealthError503,
-            description="No stations are loaded.",
+            description="The stations are not loaded, or cannot be read.",
             examples=[
                 OpenApiExample(
                     "not_loaded",

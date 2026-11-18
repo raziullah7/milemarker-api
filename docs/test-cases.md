@@ -11,7 +11,7 @@ Conventions:
 - Prices, gallons and money are compared as exact decimals, not floating point, unless a tolerance is given.
 - "Mile 100" is a distance along the road from the start. A station "4.9 mi N" lies 4.9 miles north of the road.
 
-**Status.** The suite has 597 tests, with the slow exactness test deselected and none skipped. All passed when the controller ran them at the close of Phase 11, with coverage at 98.47% against a floor of 98%. Section 9 holds 278 cases: 170 Pass, 19 Not run, 3 Fail and 86 Parked. A suite case's Actual names its test, and Pass means that test passes in the suite. A stack case's Actual names the run. Parked means the case belongs to the viewer or to nginx, which are not part of this submission.
+**Status.** The suite has 656 tests, with the slow exactness test deselected and none skipped. All passed when the controller ran them at the close of Phase 15 (release 2.1.0). Coverage was 98.47% at the close of Phase 11, against a floor of 98%. Section 9 holds 279 cases: 171 Pass, 19 Not run, 3 Fail and 86 Parked. A suite case's Actual names its test, and Pass means that test passes in the suite. A stack case's Actual names the run. Parked means the case belongs to the viewer or to nginx, which are not part of this submission.
 
 ## 1. How the tests are organised
 
@@ -79,6 +79,8 @@ Small CSV (Address and Rack ID hold any value):
 | PL-19 | UC-07 | `Springfield, ZZ` | `UnknownPlace`; at most 5 suggestions |
 | PL-20 | UC-07 | `75201`; `1600 Pennsylvania Ave, Washington, DC` | `UnknownPlace` each: ZIP codes and street addresses are not accepted (D-3) |
 | PL-21 | UC-07 | `resolve("Chicgo, IL", field="finish")` | The error's field is `finish` and its query `Chicgo, IL` |
+| PL-22 | UC-07 | Each of the 50 most populous places in `data/large_places.csv`, given as the city name alone (50 cases) | `UnknownPlace`; the first suggestion is that city in its own state. Test: `tests/test_places.py::test_pl22_a_large_city_with_no_state_gets_its_own_state_first`. Pass |
+| PL-23 | UC-07 | `Dallas`; `Dalas`; `Houstan`; `Qwxzy`; the call for `Dalas` timed | `Dallas` gives `Dallas, TX`, `Dallas, GA`, `Dallas, IA`, `Dallas, NC`, `Dallas, OR` in that order. `Dalas` gives `Dallas, TX`; `Houstan` gives `Houston, TX`; `Qwxzy` gives none. The call takes under 50 ms. Tests: the four `test_pl23_` tests in `tests/test_places.py`. Pass |
 
 ### 2.3 Loader and index: `load_stations`, `stations/index.py`
 
@@ -104,6 +106,7 @@ These tests need the database.
 | LD-16 | UC-13 | `nearest_station(index, 32.7469, −97.3268)`; `nearest_station(index, 33.224629, −96.80439)` (30 miles north of Dallas) | Station 2 at 0.0 miles; station 1 at 30.0 miles (±0.05) |
 | LD-17 | UC-13 | LD-01 plus station 7 at Dallas, price 3.30; `nearest_station` at the Dallas position. Then station 7 at 3.40, equal to station 1 | First: station 7 (cheaper of two at the same position). Then: station 1 (lower station ID on equal price) |
 | LD-18 | UC-05 | Real CSV loaded; `nearest_station` at `Los Angeles, CA` and at `New York, NY` | ≈ 121 miles, pass within 2%; ≈ 3.1 miles, pass within 2% |
+| LD-19 | UC-13 | `get_index()` when the station query raises a database error; then the database answers | `StationsNotLoaded` with the error as its cause; one WARNING naming the error type, with no traceback; nothing remembered, so the next call loads the index. Test: `tests/test_index.py::test_ld19_a_database_that_cannot_be_reached_is_stations_not_loaded`. Pass |
 
 ### 2.4 Geometry: `stations/sphere.py`, `trips/services/geo.py`
 
@@ -279,6 +282,10 @@ The Django test client against the real URL, with PostgreSQL, the fake routing s
 | EP-38 | UC-01 | Instead of the default start station, two at the Dallas position: 3.30 (ID 20) and 3.25 (ID 30); then both at 3.25 | fuel_stops[0].station_id 30, price_per_gallon 3.25; then station 20 |
 | EP-39 | UC-15 | Every error response in EP-08 to EP-36 | Body is exactly `{"error": {"code", "message", "details"}}`; the code matches its status in the architecture's error table; message is non-empty text; details is an object, empty for codes whose row lists no details |
 | EP-40 | UC-04 | EP-01's request, then again | First: timings_ms routing, own and total present and 0 or more. Second: routing_calls 0, cache_hit true, timings_ms.routing 0 |
+| EP-41 | UC-04 | A road that leaves the USA; the same request twice; the clock moved to 23 h 59 min, then past 24 h | One routing call for the two requests; the same status and body both times; still cached at 23 h 59 min, routed again after 24 h. Test: `tests/test_api.py::test_ep41_a_road_that_leaves_the_usa_is_refused_from_the_cache`. Pass |
+| EP-42 | UC-04 | A trip for which the routing service finds no road; the same request again | 422 `no_route` both times, with one call to the routing service. Test: `tests/test_api.py::test_ep42_no_road_is_refused_from_the_cache`. Pass |
+| EP-43 | UC-04 | A road under half a mile; the same request again | 400 `invalid_request` both times, with one routing call. Test: `tests/test_api.py::test_ep43_a_road_under_half_a_mile_is_refused_from_the_cache`. Pass |
+| EP-44 | UC-13 | The station query raises a database error; EP-01's request; the database then answers; the request again | 503 `stations_not_loaded` with empty `details`, no traceback logged, no routing call; then 200. Test: `tests/test_api.py::test_ep44_a_database_that_cannot_be_reached_is_503_until_it_answers`. Pass |
 
 ### 2.11 Verifier
 
@@ -360,7 +367,7 @@ Run by `scripts/live_check.py` against a running server that uses the real routi
 | N02 | UC-15 | `/api/v1/route/?start=&finish=Los Angeles, CA` | 400 | `invalid_request`; details.fields has `start` | 400 invalid_request; error.details.fields {start} | PASS |
 | N03 | UC-07 | `/api/v1/route/?start=Chicgo, IL&finish=Houston, TX` | 400 | `unknown_place`; field `start`; query `Chicgo, IL`; suggestions include `Chicago, IL`, at most 5 | 400 unknown_place; error.details.field start; error.details.query Chicgo, IL; error.details.suggestions ["Chicago, IL", "Cisco, IL", "West Chicago, IL", "North Chicago, IL", "Cicero, IL"] | PASS |
 | N04 | UC-07 | `/api/v1/route/?start=Dallas, TX&finish=Chicago` | 400 | `unknown_place`; field `finish`; suggestions `["Chicago, IL"]` | 400 unknown_place; error.details.field finish; error.details.suggestions ["Chicago, IL"] | PASS |
-| N05 | UC-07 | `/api/v1/route/?start=Dallas, TX&finish=Springfield, ZZ` | 400 | `unknown_place`; field `finish`; at most 5 suggestions | 400 unknown_place; error.details.field finish; error.details.suggestions ["Springfield, AR", "Springfield, CO", "Springfield, GA", "Springfield, ID", "Springfield, IL"] | PASS |
+| N05 | UC-07 | `/api/v1/route/?start=Dallas, TX&finish=Springfield, ZZ` | 400 | `unknown_place`; field `finish`; at most 5 suggestions | 400 unknown_place; error.details.field finish; error.details.suggestions ["Springfield, MO", "Springfield, MA", "Springfield, IL", "Springfield, OR", "Springfield, OH"] | PASS |
 | N06 | UC-08 | `/api/v1/route/?start=Honolulu, HI&finish=Los Angeles, CA` | 422 | `outside_coverage`; field `start`; query `Honolulu, HI` | 422 outside_coverage; error.details.field start; error.details.query Honolulu, HI | PASS |
 | N07 | UC-08 | `/api/v1/route/?start=Seattle, WA&finish=Anchorage, AK` | 422 | `outside_coverage`; field `finish` | 422 outside_coverage; error.details.field finish | PASS |
 | N08 | UC-08 | `/api/v1/route/?start=Toronto, ON&finish=Buffalo, NY` | 422 | `outside_coverage`; field `start` | 422 outside_coverage; error.details.field start | PASS |
@@ -435,7 +442,7 @@ Round trip is measured by `scripts/live_check.py` on the same machine as the ser
 | Station table empty | EP-31, EP-32 | Would mean emptying the table of the running server |
 | Unexpected failure | EP-33 | Needs an injected fault |
 | Cache expiry after 24 hours | EP-07 | Needs a moved clock |
-| Errors are not cached | EP-08 | Needs a routing failure followed by a success |
+| A routing failure is not cached | EP-08 | Needs a routing failure followed by a success |
 
 ## 7. Container, Postman, fresh clone and manual checks
 
@@ -548,7 +555,7 @@ Architecture section 18 ("Configuration"), section 12, NFR-20, NFR-21 and NFR-24
 | CF-03 | UC-36 | `DJANGO_DEBUG` unset; then `DJANGO_DEBUG=1` | `DEBUG` false; then true. Error answers are JSON either way (EP-36, HM-02) | `tests/test_project.py::test_cf03_debug_is_off_unless_switched_on` | Pass |
 | CF-04 | UC-36 | `DJANGO_ALLOWED_HOSTS` unset; then `DJANGO_ALLOWED_HOSTS=api.example,api2.example` | `ALLOWED_HOSTS` is `["localhost", "127.0.0.1", "[::1]"]`; then `["api.example", "api2.example"]`. `"*"` is in neither. The release 1.0 test that forbade the variable is reversed on purpose (architecture section 13) | `tests/test_project.py::test_cf04_allowed_hosts` | Pass |
 | CF-05 | UC-34 | `DJANGO_NUM_PROXIES` unset; then `DJANGO_NUM_PROXIES=1` | `REST_FRAMEWORK["NUM_PROXIES"]` is 0; then 1. Its effect: HM-07, HM-08 | `tests/test_project.py::test_cf05_proxies_trusted` | Pass |
-| CF-06 | UC-36 | `DATABASE_URL` unset | `DATABASES["default"]`: PostgreSQL engine, host `127.0.0.1`, port 5432, name `milemarker`, user `milemarker` | `tests/test_project.py::test_cf06_default_database` | Pass |
+| CF-06 | UC-36 | `DATABASE_URL` unset; then with `?connect_timeout=2` | `DATABASES["default"]`: PostgreSQL engine, host `127.0.0.1`, port 5432, name `milemarker`, user `milemarker`; `OPTIONS` holds `connect_timeout` 5. With `?connect_timeout=2` in the URL, it holds 2 | `tests/test_project.py::test_cf06_default_database` | Pass |
 | CF-07 | UC-33 | `REDIS_URL` unset; then `REDIS_URL=redis://127.0.0.1:6379/15` | Unset: the two caches and the rate-limit counters are the process's own memory, and health reports `memory` (HS-01). Set: they are in that Redis, and health reports `redis` (HS-03) | `tests/test_project.py::test_cf07_redis_url_selects_the_cache` | Pass |
 | CF-08 | UC-39 | `ROUTING_SERVERS` unset; then `http://127.0.0.1:5000/route/v1/driving/{coords}?overview=full&geometries=geojson`; then that template, a comma, and `http://127.0.0.1:5001/routed-car/route/v1/driving/{coords}?overview=full&geometries=geojson` | The two public templates of PJ-04; then that one template alone; then both, in that order | `tests/test_fake_osrm.py::test_cf08_unset_gives_the_public_servers_and_a_value_replaces_them` | Pass |
 | CF-09 | UC-39 | `ROUTING_SERVERS=http://127.0.0.1:5000/route/v1/driving/?overview=full` (no `{coords}`); then a valid template, a comma, and that one | Each time the settings refuse to load with Django's `ImproperlyConfigured`, so the API does not start. Its message contains `ROUTING_SERVERS` and the entry `http://127.0.0.1:5000/route/v1/driving/?overview=full` (row 21) | `tests/test_fake_osrm.py::test_cf09_an_entry_without_coords_stops_the_settings_loading` | Pass |
@@ -667,6 +674,7 @@ Architecture section 11 ("Other addresses"), FR-19, FR-20 and D-20. Unless state
 | HS-17 | UC-29 | `GET /api/v1/docs/` | 200, an HTML page whose script is loaded from a CDN at one exact version: its address names a version number, not `latest` | `tests/test_schema.py::test_hs17_the_swagger_page_loads_one_pinned_version_from_the_cdn` | Pass |
 | HS-20 | UC-29 | The document's opening text, and the `X-Request-ID` header of an answer | They say which request IDs are kept: 1 to 64 letters, digits, `.`, `_` and `-` | `tests/test_schema.py::test_the_document_says_which_request_ids_are_kept` | Pass |
 | HS-21 | UC-29 | `RouteQuery` given 5 spaces and 100 letters as `start`; the `start` description; `stop_cost`'s schema | It is accepted; the description says the spaces are removed before the length is checked; `stop_cost` has no `multipleOf` (Q1-08) | `tests/test_schema.py::test_the_place_names_are_trimmed_before_their_length_is_checked` | Pass |
+| HS-22 | UC-30 | The station query raises a database error; `GET /api/v1/health/`; the database then answers; health again | 503 `stations_not_loaded` in the standard shape; then 200 with no restart | `tests/test_health.py::test_hs22_a_database_that_cannot_be_reached_is_503_until_it_answers` | Pass |
 
 Against the stack:
 

@@ -47,6 +47,7 @@ class OutsideCoverage(MileMarkerError):
 
 
 class StationsNotLoaded(MileMarkerError):
-    """The station table is empty: load_stations has not been run."""
+    """The stations are not available: the table is empty (load_stations has not been run),
+    or the database cannot be read."""
 
     code = "stations_not_loaded"

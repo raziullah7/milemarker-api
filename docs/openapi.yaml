@@ -63,7 +63,7 @@ paths:
                         load_stations'
                       details: {}
                   summary: not_loaded
-          description: No stations are loaded.
+          description: The stations are not loaded, or cannot be read.
   /api/v1/route/:
     get:
       operationId: planRoute
@@ -491,7 +491,8 @@ paths:
                         load_stations'
                       details: {}
                   summary: The station table is empty
-          description: 'The station table is empty: `load_stations` has not been run.'
+          description: The station table is empty (`load_stations` has not been run),
+            or the database cannot be read.
 components:
   schemas:
     Assumptions:
@@ -809,8 +810,8 @@ components:
           type: string
           enum:
           - stations_not_loaded
-          description: '`stations_not_loaded`: the station table is empty: `load_stations`
-            has not been run'
+          description: '`stations_not_loaded`: the station table is empty (`load_stations`
+            has not been run), or the database cannot be read'
         message:
           type: string
           description: One plain sentence for a person.
@@ -838,8 +839,8 @@ components:
           type: string
           enum:
           - stations_not_loaded
-          description: '`stations_not_loaded`: the station table is empty: `load_stations`
-            has not been run'
+          description: '`stations_not_loaded`: the station table is empty (`load_stations`
+            has not been run), or the database cannot be read'
         message:
           type: string
           description: One plain sentence for a person.
@@ -927,8 +928,8 @@ components:
           type: string
           enum:
           - ok
-          description: 'Always ok: when the stations are not loaded the answer is
-            a 503.'
+          description: 'Always ok: when the stations are not loaded or cannot be read
+            the answer is a 503.'
         stations:
           type: integer
           description: Stations in the index of the worker that answered.

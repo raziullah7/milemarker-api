@@ -51,3 +51,4 @@ Every setting has a default, so no `.env` is needed. [`.env.example`](../.env.ex
 - **Emptying the cache.** Redis keeps nothing on disk: `docker compose restart redis`. Do this after changing `ROUTING_SERVERS`, or the old server's roads are served for up to 24 hours.
 - **A change to what is cached.** Raise `CACHE_KEY_VERSION` in `config/settings.py` whenever the shape of a cached value or a planning rule changes.
 - **The live cases.** `uv run python scripts/live_check.py` runs 49 cases against a running API. It calls the public routing server, so use it sparingly.
+- **Redis has no password.** It is published on 127.0.0.1, for the tests and for running from source. Do not publish that port beyond the machine: the cache unpickles what it reads.
