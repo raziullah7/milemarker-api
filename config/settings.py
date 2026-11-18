@@ -101,9 +101,9 @@ REST_FRAMEWORK = {
 # Tried in order: the first is the OSRM public server, the second takes the one retry.
 # They run the same software, but note that their paths differ.
 # {coords} becomes "lng,lat;lng,lat" (longitude first, as OSRM expects).
-# The environment variable ROUTING_SERVERS replaces both: templates separated by commas, so
-# the end-to-end run can point the API at a stand-in. Empty or blank counts as not set,
-# because Compose passes the variable through even when nothing sets it.
+# The environment variable ROUTING_SERVERS replaces both: one or two templates separated by
+# commas, so the end-to-end run can point the API at a stand-in. Empty or blank counts as
+# not set, because Compose passes the variable through even when nothing sets it.
 def _routing_servers() -> list[str]:
     """The templates from ROUTING_SERVERS, or the two public servers if it is not set."""
     value = os.environ.get("ROUTING_SERVERS", "")
@@ -115,6 +115,11 @@ def _routing_servers() -> list[str]:
     templates = [entry.strip() for entry in value.split(",") if entry.strip()]
     if not templates:
         raise ImproperlyConfigured(f"ROUTING_SERVERS has no entry in {value!r}.")
+    # The client tries each server once, and a route may take two calls at most (NFR-2).
+    if len(templates) > 2:
+        raise ImproperlyConfigured(
+            f"ROUTING_SERVERS has {len(templates)} entries; at most 2 are allowed."
+        )
     for template in templates:
         if "{coords}" not in template:
             raise ImproperlyConfigured(f"ROUTING_SERVERS entry {template!r} has no {{coords}}.")

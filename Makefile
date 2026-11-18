@@ -99,7 +99,7 @@ e2e-down:
 	$(E2E_COMPOSE) down
 
 e2e:
-	npx --yes newman@6.2.3 run $(COLLECTION) --env-var base_url=$(BASE_URL)
+	npx --yes newman@6.2.3 run $(COLLECTION) --env-var base_url=$(BASE_URL) --timeout-request 60000
 
 live:
 	uv run python scripts/live_check.py --base-url $(BASE_URL)

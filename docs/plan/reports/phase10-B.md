@@ -25,7 +25,7 @@ Files: `Makefile`, `.github/workflows/ci.yml`, `.github/dependabot.yml`, `.pre-c
 | `audit` | `uv run pip-audit` | Dry |
 | `check` | prerequisites `lint typecheck test` | Dry |
 | `e2e-up`, `e2e-down` | `docker compose -f docker-compose.yml -f docker-compose.e2e.yml up --build -d` / `down` | Dry |
-| `e2e` | `npx --yes newman run docs/postman/milemarker.postman_collection.json --env-var base_url=http://127.0.0.1:8000 --delay-request 1200` (the README's command; the delay keeps under the 60/min throttle) | Dry |
+| `e2e` | `npx --yes newman run docs/postman/milemarker.postman_collection.json --env-var base_url=http://127.0.0.1:8000 --delay-request 1200` (the README's command; the delay keeps under the 60/min throttle) | Dry. Corrected by the controller after review finding R10-17: the delay was removed and Newman pinned, so the target now runs `npx --yes newman@6.2.3 run ... --env-var base_url=http://127.0.0.1:8000 --timeout-request 60000` |
 | `live` | `uv run python scripts/live_check.py --base-url http://127.0.0.1:8000` | Dry; its help line says it calls the public routing server |
 | `clean` | `docker compose -f docker-compose.yml -f docker-compose.e2e.yml down -v --remove-orphans` (covers both stacks) | Dry |
 

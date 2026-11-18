@@ -175,7 +175,7 @@ def test_fu23_cheapest_fuel_keeps_a_tiny_purchase():
     miles, prices, total = [0.0, 0.03], [3.50, 3.00], 300.0
     purchases = cheapest_fuel(miles, prices, total)
     assert_plan(purchases, prices, [(0, 0.003), (1, 29.997)], 90.0015)
-    # The answer builder does not count a purchase under 0.005 gallons as a stop.
+    # Only one purchase is 0.005 gallons or more: the start's would show as 0.00 gallons.
     assert sum(1 for p in purchases if p.gallons >= 0.005) == 1
 
 

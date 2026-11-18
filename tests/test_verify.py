@@ -1,6 +1,6 @@
 """The verifier itself: cases VF-01 to VF-19 of docs/test-cases.md, section 2.11, the
-verifier's cases of section 9.13 (QB-01 to QB-03, QB-08 to QB-10) and its options, VR-01,
-VR-03 and VR-04 of section 9.14.
+verifier's cases of section 9.13 (QB-01 to QB-03, QB-08 to QB-10, QB-18 to QB-21) and its
+options, VR-01, VR-03 and VR-04 of section 9.14.
 
 Correct answers come from the real endpoint, through Django's test client, with the real
 stations in memory and the routing call replaced by a recorded road. VF-02 to VF-18 then each
@@ -27,6 +27,8 @@ import pytest
 from stations.index import reset_index
 from stations.models import FuelStation
 from stations.places import HAND_ADDED_PLACES
+from stations.sphere import haversine_miles
+from tests import verify
 from tests.conftest import load_road
 from tests.test_api import DALLAS, add_station, listed_prices, on_road, straight_road
 from tests.verify import Listing, load_prices, places_from, verify_response
@@ -499,6 +501,106 @@ def test_qb10_the_verifier_says_what_it_does_not_check():
     assert "EX-01 to EX-04" in description
 
 
+# --- QB-18 to QB-21: the review of those fixes (10R) -----------------------------------------
+
+
+@pytest.mark.parametrize("n", [2, 3, 4, 5])
+def test_qb18_a_station_just_beyond_the_search_radius(good, prices, use_real_stations, n):
+    """Review 10R, finding R10-01. Stop n is given the nearest unused station 9.5 to 12
+    miles from its point on the line, so twice the 5-mile search radius away: what a radius
+    in the wrong units would let through. Every other figure is made to agree."""
+    bad = copy.deepcopy(good)
+    stop = bad["fuel_stops"][n - 1]
+    point = (float(stop["lat"]), float(stop["lng"]))
+    index = use_real_stations
+    miles = haversine_miles(*point, index.lat, index.lng)
+    used = {s["station_id"] for s in bad["fuel_stops"]}
+    beyond = [
+        k for k in np.argsort(miles) if 9.5 <= miles[k] <= 12 and index.info[k].opis_id not in used
+    ]
+    far = index.info[beyond[0]]
+    listing = prices[str(far.opis_id)]
+    stop["station_id"] = far.opis_id
+    for key in ("name", "address", "city", "state"):
+        stop[key] = getattr(listing, key)
+    stop["price_per_gallon"] = listing.price
+    agree(bad)
+
+    found, lines = rules(bad, prices)
+    assert found == {"R17"}, lines
+
+
+def r12_accepts(line: list, distance: Decimal, position: int, mile: Decimal) -> bool:
+    """Whether rule R12, as section 4 states it, accepts `mile` at `position` on `line`."""
+    last_gap = haversine_miles(*map(float, line[-2][::-1]), *map(float, line[-1][::-1]))
+    shortest = 0.5 * (len(line) - 2) + float(last_gap)
+    longest = 0.5 * (len(line) - 1)
+    scale = 0.5 * position * float(distance)
+    return scale / longest - 0.1 <= float(mile) <= scale / shortest + 0.1
+
+
+def test_qb19_a_line_padded_at_its_end(good, prices):
+    """Review 10R, finding R10-02. Thirty copies of the last point make the line look 15
+    miles longer to R12, so each station stop can be drawn several miles past its marker:
+    here each is moved to the farthest point R12 still accepts. R13 refuses the padding."""
+    bad = copy.deepcopy(good)
+    line = bad["map"]["features"][0]["geometry"]["coordinates"]
+    line.extend(copy.deepcopy(line[-1]) for _ in range(30))
+    distance = bad["summary"]["distance_miles"]
+    for stop in bad["fuel_stops"][1:]:
+        at = line.index([stop["lng"], stop["lat"]])
+        moved = max(
+            k for k in range(at, at + 60) if r12_accepts(line, distance, k, stop["mile_marker"])
+        )
+        assert moved > at, "the padding lets the stop move"
+        stop["lng"], stop["lat"] = line[moved]
+    agree(bad)
+
+    found, lines = rules(bad, prices)
+    assert "R13" in found, lines
+
+
+def test_qb20_a_repeated_point_is_refused(good, prices):
+    """R10-02: a point repeated in the middle of the line is no part of a real line. (The
+    end point alone may repeat the one before it: VR-03's test road ends so.)"""
+    bad = copy.deepcopy(good)
+    line = bad["map"]["features"][0]["geometry"]["coordinates"]
+    middle = len(line) // 2
+    line.insert(middle, copy.deepcopy(line[middle]))
+
+    found, lines = rules(bad, prices)
+    assert "R13" in found, lines
+    [r13] = [line for line in lines if line.startswith("R13")]
+    assert "repeated" in r13
+
+
+@pytest.mark.parametrize(("added", "refused"), [(19, False), (30, True)])
+def test_qb20_the_point_count_allows_a_quarter_of_a_percent(good, prices, added, refused):
+    """R10-02: 2 x 2,800.7 + 1 is 5,602.4 points, and the line has 5,594. Points added
+    between the last two, each distinct, bring it to 5,613 (0.19% over: allowed) or to
+    5,624 (0.39% over: refused, as 0.25% is 14 points)."""
+    bad = copy.deepcopy(good)
+    line = bad["map"]["features"][0]["geometry"]["coordinates"]
+    (lng1, lat1), (lng2, lat2) = line[-2], line[-1]
+    between = [
+        [lng1 + (lng2 - lng1) * k / (added + 1), lat1 + (lat2 - lat1) * k / (added + 1)]
+        for k in range(1, added + 1)
+    ]
+    line[-1:-1] = [[round(lng, 5), round(lat, 5)] for lng, lat in between]
+    assert len({tuple(point) for point in line}) == len(line)
+
+    lines = verify_response(bad, prices)
+    r13 = [line for line in lines if line.startswith("R13")]
+    assert ("line points" in "".join(r13)) is refused, lines
+
+
+def test_qb21_a_bare_string_is_not_a_list_of_hosts(good, prices):
+    """Review 10R, finding R10-12. "fake-osrm" read as a list of hosts would be a set of
+    letters: the host itself refused, and a host named "f" accepted."""
+    with pytest.raises(TypeError):
+        verify_response(good, prices, routing_hosts="fake-osrm")
+
+
 # --- VR-01, VR-03, VR-04: what the verifier's caller can name -------------------------------
 
 
@@ -558,6 +660,15 @@ def test_vr04_the_hand_added_places_are_in_the_default_places(prices, state, cit
     body["fuel_stops"][0]["lat"] += Decimal("0.29")  # 20 miles
     found, lines = rules(body, prices)
     assert "R17" in found, lines
+
+
+def test_vr04_the_verifiers_copy_of_the_hand_added_places_is_the_applications():
+    """Review 10R, finding R10-13. The verifier keeps its own copy, so it imports nothing
+    from the application; this test may import both, and holds the copy to the original
+    exactly, where the test above would let a slip of a few miles through."""
+    copied = {(state, city): (lat, lng) for city, state, lat, lng in verify.HAND_ADDED_PLACES}
+
+    assert copied == HAND_ADDED_PLACES
 
 
 # --- VF-19, and the verifier's own reading of the CSV ----------------------------------------

@@ -15,6 +15,7 @@ permissions:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:17
@@ -38,7 +39,8 @@ jobs:
       - uses: astral-sh/setup-uv@v10.3.3
         with:
           enable-cache: true
-      - run: uv sync --frozen
+      # --locked fails if uv.lock no longer matches pyproject.toml.
+      - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy
@@ -56,6 +58,7 @@ jobs:
 
   image:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -68,6 +71,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       COMPOSE: docker compose -f docker-compose.yml -f docker-compose.e2e.yml
     steps:
@@ -85,8 +89,8 @@ jobs:
           echo "The API did not answer in time" >&2
           exit 1
       - name: Postman collection
-        run: npx --yes newman@6.2.3 run docs/postman/milemarker.postman_collection.json --env-var base_url=http://127.0.0.1:8000
-      - name: Every routing request matched a recording
+        run: npx --yes newman@6.2.3 run docs/postman/milemarker.postman_collection.json --env-var base_url=http://127.0.0.1:8000 --timeout-request 60000
+      - name: Eight routing requests, each matched to a recording
         run: |
           curl -fsS http://127.0.0.1:5000/_requests | tee requests.json
           python3 - <<'PY'
@@ -97,7 +101,11 @@ jobs:
               raise SystemExit("The stand-in served no routing request")
           if unmatched:
               raise SystemExit(f"{len(unmatched)} request(s) matched no recording: {unmatched}")
-          print(f"{len(log['requests'])} routing request(s), all matched")
+          # The collection's fourteen requests are eight distinct trips; the rest are
+          # answered from the cache or refused before routing.
+          if log["count"] != 8:
+              raise SystemExit(f"{log['count']} routing requests, expected 8")
+          print(f"{log['count']} routing requests, all matched")
           PY
       - name: Container logs
         if: failure()

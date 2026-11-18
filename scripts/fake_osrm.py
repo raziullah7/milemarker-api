@@ -11,6 +11,7 @@ tests/fixtures/roads, so the whole stack can run with no call to the internet.
     GET  /_requests                                       the route requests served so far
     POST /_reset                                          empties that log
     GET  /_health                                         200
+    GET  any other path                                   400 InvalidUrl, as the real server
 
 Only the standard library is used, so it runs in the API image as it is.
 """
@@ -120,7 +121,9 @@ class Handler(BaseHTTPRequestHandler):
     server: FakeOsrm
 
     def do_GET(self):
-        """Route requests, the log and the health check; anything else is a 404."""
+        """Route requests, the log and the health check. Any other path is answered as the
+        real server answers one it does not serve: 400 InvalidUrl, which the routing client
+        reads as a wrong request, not as one server's trouble."""
         path = urlsplit(self.path).path
         if path == "/_health":
             self._send_json(200, {"status": "ok"})
@@ -131,7 +134,7 @@ class Handler(BaseHTTPRequestHandler):
         elif ROUTE_PATH.match(path):
             self._route(ROUTE_PATH.match(path).group("coords"))
         else:
-            self._send_json(404, {"code": "NotFound", "message": "No such path."})
+            self._send_json(400, {"code": "InvalidUrl", "message": "No such path."})
 
     def do_POST(self):
         """Only /_reset, which empties the log."""

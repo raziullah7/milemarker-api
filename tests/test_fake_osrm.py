@@ -127,14 +127,16 @@ def test_si06_a_malformed_request_is_an_invalid_url(base, path):
 
 
 def test_si07_the_request_log_and_its_reset(base):
-    httpx.get(f"{base}/route/v1/driving/{DAL_HOU}")
-    httpx.get(f"{base}/route/v1/driving/{HOU_DAL}")
+    # With the query the API sends, which the log leaves out (row 22; review 10R, R10-06).
+    query = "?overview=full&geometries=geojson"
+    httpx.get(f"{base}/route/v1/driving/{DAL_HOU}{query}")
+    httpx.get(f"{base}/route/v1/driving/{HOU_DAL}{query}")
     log = httpx.get(f"{base}/_requests").json()
 
     assert log["count"] == 2
     first, second = log["requests"]
-    assert first["path"].startswith(f"/route/v1/driving/{DAL_HOU}")
-    assert second["path"].startswith(f"/route/v1/driving/{HOU_DAL}")
+    assert first["path"] == f"/route/v1/driving/{DAL_HOU}"
+    assert second["path"] == f"/route/v1/driving/{HOU_DAL}"
     assert {k: first[k] for k in ("start", "finish", "matched", "status")} == {
         "start": [-96.80439, 32.790439],
         "finish": [-95.3657, 29.7652],
@@ -157,8 +159,13 @@ def test_si08_health_answers_200_and_is_not_a_route_request(base):
     assert httpx.get(f"{base}/_requests").json()["count"] == 0
 
 
-def test_an_unknown_path_is_a_404(base):
-    assert httpx.get(f"{base}/nothing").status_code == 404
+def test_si12_an_unknown_path_is_an_invalid_url(base):
+    """Review 10R, finding R10-11. The real server answers a path it does not serve with
+    400 InvalidUrl, which the routing client treats as a wrong request (no second server),
+    where a 404 would send it to the second server."""
+    response = httpx.get(f"{base}/nothing")
+    assert response.status_code == 400
+    assert response.json()["code"] == "InvalidUrl"
 
 
 def test_si09_the_routing_client_reads_the_stand_in_through_the_setting(base, settings):
@@ -255,6 +262,16 @@ def test_cf09_an_entry_without_coords_stops_the_settings_loading(monkeypatch):
 def test_cf34_entries_are_trimmed_and_empty_ones_dropped(monkeypatch):
     value = f" {LOCAL_1} , ,{LOCAL_2} "
     assert _load_settings(monkeypatch, value) == [LOCAL_1, LOCAL_2]
+
+
+def test_cf37_more_than_two_servers_stops_the_settings_loading(monkeypatch):
+    """Review 10R, finding R10-03. The client tries each server once, so a third entry
+    would allow a third routing call; NFR-2 allows two at most."""
+    local_3 = LOCAL_1.replace("5000", "5002")
+    with pytest.raises(ImproperlyConfigured) as error:
+        _load_settings(monkeypatch, f"{LOCAL_1},{LOCAL_2},{local_3}")
+    assert "ROUTING_SERVERS" in str(error.value)
+    assert "3" in str(error.value)
 
 
 def test_cf35_empty_or_blank_counts_as_unset_but_commas_only_is_refused(monkeypatch):

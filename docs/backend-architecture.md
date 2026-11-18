@@ -159,7 +159,7 @@ The price is stored exactly as the CSV has it (up to 8 decimal places).
 **What comes back:**
 
 - **Found:** the coordinates and a label in the table's own spelling, `City, ST`. The table's spelling is plain: `Saint Louis, MO`, `Winston Salem, NC`, `Mcallen, TX`.
-- **Alaska, Hawaii, Puerto Rico, a Canadian province, or a final part that is `Canada` or `Mexico`:** outside coverage.
+- **Alaska, Hawaii, Puerto Rico, a Canadian province, or a final part that is `Canada` or `Mexico`:** outside coverage. With no comma, a last word `Canada` or `Mexico` counts only if the text did not end in USA: the caller said the place is in the United States. So `Mexico, USA` is an unknown place, with the US places called Mexico as suggestions, and `Tijuana Mexico USA` an unknown place with none; `Tijuana, Mexico, USA` is still outside coverage.
 - **Anything else:** unknown place, with up to five suggestions as `City, ST`. With a known state they are the closest names in that state. With no state, or a state that is not recognised, they are that city name in the states that have it (`Chicago` → `Chicago, IL`).
 
 **Positions:**
@@ -258,7 +258,7 @@ The plan is computed on the thinned list. If the thinned list has no plan but th
 
 ### The lowest possible bill
 
-For comparison (FR-15) the response also carries the lowest fuel bill possible if stops were free. With free stops the answer is the simple greedy rule: buy just enough to reach the next cheaper station, or fill up if there is none within range. It is run on every station along the road, not the thinned list, and takes under 1 ms (*measured*). Its stops are counted as the plan's are: a purchase shown as 0.00 gallons is not a stop, though its fuel is in the bill. Its bill is rounded exactly as the plan's is, stop by stop.
+For comparison (FR-15) the response also carries the lowest fuel bill possible if stops were free. With free stops the answer is the simple greedy rule: buy just enough to reach the next cheaper station, or fill up if there is none within range. It is run on every station along the road, not the thinned list, and takes under 1 ms (*measured*). Its stops are counted as the plan's are: the fill-up at the start always, and after it no purchase shown as 0.00 gallons, though its fuel is in the bill. Its bill is rounded exactly as the plan's is, stop by stop.
 
 The research figure of $854.65 above came from the thinned list. On every station the finished API may report a slightly lower one.
 
@@ -304,7 +304,7 @@ Both templates are settings, and each has its own test.
 - **`overview=full` is required.** The default "simplified" road has 55 points for New York to Los Angeles and comes out 154 miles short, which would put every mile marker in the wrong place.
 - **When the second server is tried:** after a timeout, a connection error, or any answer that is not a readable route, except the two below. So a 5xx or 429, a redirect, a 204, 403, 404, 408, 410 or 451, and a 200 that cannot be read as a route all go to the second server: they concern the server that answered, not the request. The deadline is 5 seconds per attempt, so a server that does not answer costs two calls (NFR-2) and about 10 seconds (NFR-12).
 - **What the deadline bounds.** The HTTP library times connecting and waiting for the answer separately, and our own clock is checked as the answer is read. An attempt whose server is slow both to answer and to send can therefore run to about twice the deadline. The timeouts are not made shorter, because a coast-to-coast request takes up to about 3 seconds to start answering.
-- **When it is not:** if the server answers that no road exists between the points (OSRM's `NoRoute` or `NoSegment`), that is the answer. Any other answer with status 400 means the request itself is wrong, and ends it with `routing_unavailable`. In both cases the second server would say the same.
+- **When it is not:** if the server answers that no road exists between the points (OSRM's `NoRoute` or `NoSegment`), that is the answer. Any other answer with status 400 means the request itself is wrong, and ends it with `routing_unavailable`. In both cases the second server would say the same. This holds for any 400, even one that is not the routing server's own, such as a page from a proxy in front of one server: that case is accepted, so the rule stays simple (review 10R, R10-10).
 - **If both fail:** one error, `routing_unavailable`. Its reason is `timeout` only when every attempt timed out, and `error` otherwise.
 - **One shared HTTP client** (`httpx`) keeps the connection open between requests, so later calls skip the connection set-up.
 - **A User-Agent naming the app** is sent, because the second server's rules ask applications to identify themselves. It is a setting.

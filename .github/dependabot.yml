@@ -17,6 +17,15 @@ updates:
       docker-images:
         patterns: ["*"]
 
+  # The images named in the Compose files, which the docker entry above does not read.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      compose-images:
+        patterns: ["*"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

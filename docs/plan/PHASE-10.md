@@ -30,6 +30,32 @@ Baseline: `PLAN.md`, Part 2, Phase 10. Written before Gate 9 closed; nothing her
 - Ruling: three of the six remaining public routing calls are spent recording roads. Why: with them the whole Postman collection runs on the stand-in, in CI, for ever. Three calls remain for the final check.
 - Ruling: `make dev` serves on port 8001, so it never collides with the Compose stack on 8000.
 
+## Rulings on the review (10R)
+
+Report: `reports/phase10-R.md`. No Critical, 1 Important, 5 Minor, 11 Notes. The reviewer reverted each of 10C's fixes in a copy and saw its test fail, and found R12's bracket sound. Every finding is accepted as true.
+
+| Finding | Ruling | Fixed by |
+|---|---|---|
+| R10-01 R17 allows a stop 15 miles from any row of its city, so it cannot catch a search radius that is too wide | Fix as proposed: a stop lies within 5.01 miles of the mean of its city's rows, or of one row, which is how a station is placed. Tests: a stop 9.5 to 12 miles off the road is caught; every real answer still passes | 10C, second pass |
+| R10-02 Padding the line with repeated end points hides miles from R12 | Fix as proposed: R13 rejects repeated points and allows the point count to be 0.25% or 2 points off | 10C |
+| R10-03 `ROUTING_SERVERS` accepts three entries, which breaks "never more than two calls" | Fix: more than two entries is refused at start-up, like the other bad values | 10C |
+| R10-04 CI installs from a stale lock file without complaint | Fix: `uv sync --locked` | Controller |
+| R10-05 Dependabot does not watch the Compose files' images | Fix: add the `docker-compose` ecosystem | Controller |
+| R10-06 Nothing tests that the stand-in logs the path without its query string | Fix: a test | 10C |
+| R10-07 At stop cost 0 the two stop counts can still differ when the start purchase shows 0.00 | Fix: the start is always counted, in both | 10C |
+| R10-08 Architecture section 6 still says a final `Mexico` or `Canada` is always outside coverage | Fix the sentence: unless the text ended in USA. The behaviour for comma-free texts such as `Tijuana Mexico USA` (unknown place, no suggestions) stands: the caller said USA | 10C |
+| R10-09 "No road, whatever the status short of a server error" is tested only at 400 and 200 | Fix: tests for a 404 and a 503 carrying a "no road" body | 10C |
+| R10-10 Any 400 ends the request, even one that is not the routing server's own | Stands, as ruled in Phase 9. One sentence in section 9 says so | 10C |
+| R10-11 The stand-in answers 404 for an unknown path; the real server answers 400 | Fix: 400 `InvalidUrl`, as the real server | 10C |
+| R10-12 A bare string as `routing_hosts` is read as a set of letters | Fix: a string raises `TypeError` | 10C |
+| R10-13 The verifier's copy of the hand-added places is held only loosely to the application's | Fix: the test compares the two tables directly | 10C |
+| R10-14 No job has a time limit; Newman has no request timeout; the count of routing requests is not enforced | Fix: 20 minutes per job, a 60-second request timeout, and the end-to-end check requires exactly 8 routing requests | Controller |
+| R10-15 `check --deploy` exits 0 on warnings | Carried: Phase 11 adds the step with `--fail-level WARNING` | Phase 11 |
+| R10-16 A test comment and a catalogue row still describe the removed 0.005-gallon rule | Fix both | 10C |
+| R10-17 10B's report gives a delay the Makefile does not have | Correct the report's row | Controller |
+
+The second pass is re-read by the reviewer, not by the controller alone.
+
 ## Gate 10 checklist
 
 - [ ] The controller has read both diffs.

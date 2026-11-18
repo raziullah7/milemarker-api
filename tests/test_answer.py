@@ -336,16 +336,23 @@ def test_an10_miles_and_coordinates_are_rounded():
 
 
 def test_an11_tiny_free_stop_purchase_is_not_counted_but_its_fuel_is():
-    """With QB-13's figures (review 9-Q0b, note N7 a). The 0.004-gallon purchase shows as
-    0.00 gallons, so it is not a stop, but the running total carries it into the next
+    """QB-13 (review 9-Q0b, note N7 a), with the tiny purchase after the start, since the
+    start is always counted (review 10R, R10-07; QB-22). The 0.003-gallon purchase shows
+    as 0.00 gallons, so it is no stop, but the running total carries it into the next
     purchase: 10.01 gallons, not 10.00. That hundredth is worth a cent here, so a builder
-    that dropped the purchase would show 70.00."""
+    that dropped the purchase would show 85.00."""
     road, stops = _plan([30.0], ["3.50"], 300.0)
-    cheapest = [(Decimal("3.50"), 0.004), (Decimal("3.00"), 10.003), (Decimal("2.00"), 19.993)]
+    cheapest = [
+        (Decimal("3.50"), 10.001),
+        (Decimal("3.20"), 0.003),
+        (Decimal("3.00"), 10.002),
+        (Decimal("2.00"), 9.994),
+    ]
     summary = _json(_answer(road, stops, cheapest=cheapest))["summary"]
 
-    assert summary["lowest_possible_stops"] == 2
-    assert summary["lowest_possible_fuel_cost"] == Decimal("70.01")  # 0.00 + 30.03 + 39.98
+    assert summary["lowest_possible_stops"] == 3
+    # Gallons 10.00, 0.00, 10.01, 9.99: costs 35.00, 0.00, 30.03, 19.98.
+    assert summary["lowest_possible_fuel_cost"] == Decimal("85.01")
 
 
 def test_purchase_rounding_to_zero_gallons_is_not_a_stop():
@@ -408,6 +415,23 @@ def test_qb07_lowest_possible_stops_are_counted_from_the_shown_gallons():
         Decimal("29.97"),
     ]
     assert summary["total_fuel_cost"] == summary["lowest_possible_fuel_cost"] == Decimal("60.00")
+    assert summary["stops"] == summary["lowest_possible_stops"] == 3
+
+
+def test_qb22_the_start_is_counted_as_a_stop_in_both_counts():
+    """Review 10R, finding R10-07. The plan always shows the fill-up at the start, even at
+    0.00 gallons, so the lowest possible count must count it too: at stop cost 0, with the
+    same purchases, the two counts are equal."""
+    road, stops = _plan([0.004, 10.003, 19.993], ["3.50", "3.00", "2.00"], 300.0)
+    body = _json(_answer(road, stops, stop_cost=Decimal("0")))
+    summary = body["summary"]
+
+    assert [s["gallons"] for s in body["fuel_stops"]] == [
+        Decimal("0.00"),
+        Decimal("10.01"),
+        Decimal("19.99"),
+    ]
+    assert summary["total_fuel_cost"] == summary["lowest_possible_fuel_cost"] == Decimal("70.01")
     assert summary["stops"] == summary["lowest_possible_stops"] == 3
 
 

@@ -37,6 +37,7 @@ DEFAULT_STOP_COST = Decimal(10)
 CENT = Decimal("0.01")
 FIRST_FILL_WARNING_MILES = 25  # R10, FR-14
 LINE_GAP_MILES = 0.51  # R13: half-mile points, plus a little for coordinates cut to 5 decimals
+COUNT_SHARE, COUNT_POINTS = Decimal("0.0025"), 2  # R13: how far the point count may be off
 # R12: a marker is shown to 0.1 mile, so it can be 0.05 from its point's exact mile. The rest
 # is room for the straight line between the last two points, measured from coordinates cut
 # to 5 decimals.
@@ -52,11 +53,11 @@ LOWER_48_AND_DC = frozenset({
 # fmt: on
 LABEL = re.compile(r"[^,]+, ([A-Z]{2})")  # R16: "City, ST"
 
-# R17: a station sits at its city's place: the average of the city's rows, which are at most
-# 10 miles apart, or for the few cities spread wider one of the rows (D-5, architecture
-# section 6). A stop is within the search radius of its station. So a stop is within this
-# many miles of some row of its city.
-NEAR_PLACE_MILES = SEARCH_RADIUS_MILES + 10
+# R17: a station stands at its city's place, which is the mean of the city's rows, or for the
+# few cities whose rows are far apart one of them (architecture section 6). A station stop is
+# drawn at the road point nearest its station, within the search radius (section 7). The
+# 0.01 is room for the stop's coordinates, cut to 5 decimals.
+NEAR_PLACE_MILES = SEARCH_RADIUS_MILES + 0.01
 CITIES_CSV = Path(__file__).resolve().parent.parent / "data" / "us_cities.csv"
 # The five places the architecture (section 6) adds by hand, because data/us_cities.csv lacks
 # them: (city, state, lat, lng). A copy of the values in stations/places.py, not an import.
@@ -129,13 +130,17 @@ def places_from(rows: Iterable[tuple[str, str, float, float]]) -> Places:
 @functools.cache
 def default_places() -> Places:
     """R17's places when the caller gives none: every row of data/us_cities.csv, and the
-    five places added by hand. Read once."""
+    five places added by hand where the file has no such city, as the application adds
+    them. Read once."""
     with open(CITIES_CSV, newline="", encoding="utf-8-sig") as f:
         rows = [
             (row["CITY"], row["STATE_CODE"], row["LATITUDE"], row["LONGITUDE"])
             for row in csv.DictReader(f)
         ]
-    return places_from([*rows, *HAND_ADDED_PLACES])
+    places = places_from(rows)
+    for key, spots in places_from(HAND_ADDED_PLACES).items():
+        places.setdefault(key, spots)
+    return places
 
 
 @dataclass(frozen=True)
@@ -160,10 +165,14 @@ def verify_response(
 
     `stop_cost` is what the request sent (text or number), or None if it sent none.
     `places` is what R17 checks station stops against, as places_from() makes it; None
-    means default_places(). `routing_hosts` names routing servers R15 accepts beside the
-    two public ones, such as the stand-in `fake-osrm` of the end-to-end run. Every rule is
-    checked every time, so one broken rule never hides another.
+    means default_places(). `routing_hosts` is a list of routing servers R15 accepts beside
+    the two public ones, such as ["fake-osrm"], the stand-in of the end-to-end run; a bare
+    string raises TypeError. Every rule is checked every time, so one broken rule never
+    hides another.
     """
+    if isinstance(routing_hosts, str):
+        # A bare "fake-osrm" would otherwise be read as the set of its letters.
+        raise TypeError("routing_hosts is a list of host names, not one name")
     given = _Given(prices, stop_cost, places, frozenset(routing_hosts))
     lines = []
     for rule, check in RULES:
@@ -537,13 +546,25 @@ def _r13_line_spacing(body, given):
         problems.append(
             f"gaps over {LINE_GAP_MILES} miles: {len(gaps)}, the first {gap:.3f} after point {i}"
         )
+    # Points are half a mile apart, so a line repeats none, with one exception: the end point
+    # can fall within a metre of the last half-mile point and be cut to the same 5 decimals
+    # (every test road of a whole number of miles ends so). Repeats would let a line look
+    # longer than it is, and R12 takes its scale from the number of points.
+    repeats = [
+        i
+        for i, (a, b) in enumerate(pairwise(line[:-1]))
+        if (_dec(a[0]), _dec(a[1])) == (_dec(b[0]), _dec(b[1]))
+    ]
+    if repeats:
+        problems.append(f"repeated points: {len(repeats)}, the first after point {repeats[0]}")
     # A point every half mile plus the end point can be almost a whole point away from
-    # 2d + 1, which is more than 1% on a trip under about 40 miles.
+    # 2d + 1. The road's own length and the routing service's figure for it differ too, by
+    # 0.18% at most on the recorded roads.
     expected = 2 * distance + 1
-    if abs(len(line) - expected) > max(expected / 100, 1):
+    if abs(len(line) - expected) > max(expected * COUNT_SHARE, COUNT_POINTS):
         problems.append(
-            f"{len(line)} line points, expected {expected} within 1% or 1 point, "
-            "whichever is larger"
+            f"{len(line)} line points, expected {expected} within {COUNT_SHARE:%} or "
+            f"{COUNT_POINTS} points, whichever is larger"
         )
     return problems
 
@@ -649,15 +670,17 @@ def _r17_stations_near_their_places(body, given):
         if stop["kind"] != "station":
             continue
         where = f"stop {stop['order']} ({stop['city']}, {stop['state']})"
-        spots = places.get((stop["state"], _city_key(stop["city"])))
-        if not spots:
+        rows = places.get((stop["state"], _city_key(stop["city"])))
+        if not rows:
             problems.append(f"{where}: no such place in the places data")
             continue
+        # Where the station can stand: the mean of the city's rows, or any one of them.
+        mean = (sum(lat for lat, _ in rows) / len(rows), sum(lng for _, lng in rows) / len(rows))
         point = (stop["lng"], stop["lat"])
-        nearest = min(_miles_between(point, (lng, lat)) for lat, lng in spots)
+        nearest = min(_miles_between(point, (lng, lat)) for lat, lng in [mean, *rows])
         if nearest > NEAR_PLACE_MILES:
             problems.append(
-                f"{where} is {nearest:.1f} miles from the nearest place of that name, "
+                f"{where} is {nearest:.2f} miles from where a station of that place stands, "
                 f"more than {NEAR_PLACE_MILES}"
             )
     return problems

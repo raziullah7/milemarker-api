@@ -60,3 +60,48 @@ This task added 82 tests: 67 in `test_verify.py`, 10 in `test_routing.py`, 1 in 
 
 - **R12's bracket is wider than 0.1 mile.** Near the end of a long road whose last two points are close together, it can be up to about 0.5 mile wide. A stop moved by one point could then pass near the finish, though a move of 2 or more points cannot. The review's 17 points, and a one-point move on every New York stop, are caught.
 - **The rule for "no road" is unchanged.** A `NoRoute` body is still `NoRoute` with any status below 500, for example a 404 carrying it. The ruling names only "a 400 whose body is not no road", so I left that rule as it was.
+
+## Second pass
+
+Status: DONE. This pass fixes the twelve findings of review 10R ruled to 10C in `docs/plan/PHASE-10.md` ("Rulings on the review (10R)"), working on top of `838d1cb`. Each fix began with a test that failed for the stated reason. Where the test could not fail against the current code, a scratch mutant run outside the repository shows that it can. No regression pin changed. Every test run used `DATABASE_URL=…@127.0.0.1:5432/milemarker_c`, one pytest process at a time.
+
+| Finding | Tests added or changed | Before the fix | What changed |
+|---|---|---|---|
+| R10-01 | `test_verify.py`: QB-18 (four cases, stops 2 to 5). QB-02's 54 answers and VF-01's 7 run again | Each QB-18 case: `assert set() == {'R17'}`, so all 17 rules passed. The stations chosen are the nearest unused ones 9.5 to 12 miles from the stop's point: Lowellville OH (9.77 mi), Tonica IL (10.34), York NE (11.46), Hudson CO (9.54) | `tests/verify.py`, R17: a station stop lies within 5.01 miles of the mean of its city's rows, or of one of them. Those are the only points where the application places a station. The five hand-added places count only where the file has no such city, as in the application. **After:** each QB-18 case reports R17 alone. QB-02 (all 18 recorded roads with a plan, at stop costs 0, 10 and 25) and VF-01 pass. Across QB-02's answers, the farthest of 163 station stops is 4.87 miles from such a point. All 6,626 real stations stand exactly on one (largest distance 0.0) |
+| R10-02 | QB-19 (the review's padded line); QB-20 (a repeated middle point; 19 and 30 distinct points added at the end) | QB-19: `assert 'R13' in set()`: 30 copies of the end point, each stop moved to the farthest point R12 accepts, and all 17 rules passed. Repeated point: `assert 'R13' in {'R12'}`. 30 extra points: no count problem under the old 1% | R13 refuses a point that repeats the one before it, and allows the count to be 0.25% or 2 points off. **After:** QB-19 reports R13 (29 repeated points; 5,624 points against 5,602.4) and R17 (four stops moved over 5 miles). 19 extra points pass (0.19%); 30 are refused (0.39%) |
+| R10-03 | `test_fake_osrm.py`: CF-37 | `DID NOT RAISE ImproperlyConfigured` | `config/settings.py`: more than two `ROUTING_SERVERS` entries are refused, with a message giving the count. The comment above now says "one or two templates" |
+| R10-06 | SI-07 now sends `?overview=full&geometries=geojson` and requires each logged `path` to equal the bare path | It passes against the stand-in, which already drops the query. Against a scratch copy that logs `self.path`: `'…29.7652?overview=full&geometries=geojson' != '…29.7652'` | Test only |
+| R10-07 | `test_answer.py`: QB-22. AN-11 (QB-13) given a new input | QB-22: `assert 3 == 2`: at stop cost 0, with identical purchases and a start purchase shown as 0.00, `stops` was 3 and `lowest_possible_stops` 2 | `answer.py`: `lowest_possible_stops = 1 + sum(g > 0 for g in lowest_gallons[1:])`, so the start is always counted, as in the plan. Section 8's sentence says so. AN-11 had its tiny purchase at the start, where it is now counted, which would make its name ("not counted") false. Its tiny purchase now comes after the start: (10.001, 0.003, 10.002, 9.994) at (3.50, 3.20, 3.00, 2.00); lowest 85.01, 3 stops. Scratch mutants: the tiny purchase dropped gives `85.0 != 85.01`; every purchase counted gives `4 != 3`. Rows AN-11 and QB-13 follow. The regression pins (8) pass unchanged |
+| R10-08 | none: a document fix | `resolve()` today: `Mexico` and `Tijuana Mexico` are outside coverage. `Mexico, USA` is unknown, with IN, ME, MO, NY and PA suggested. `Tijuana Mexico USA` and `Toronto Canada US` are unknown, with none. `Tijuana, Mexico, USA` is outside coverage | Architecture section 6: with no comma, a last word `Canada` or `Mexico` counts only if the text did not end in USA. The sentence gives the three examples. The behaviour stands, as ruled |
+| R10-09 | `test_routing.py`: QB-23 (404 carrying `NoRoute`; 503 carrying it, then server 2) | Both pass against the current code. Scratch mutants of `_attempt`: with the `status < 500` guard removed, the 503 case failed (`NoRoute` raised); with the guard narrowed to `status == 400`, the 404 case failed (server 2 called) | Tests only |
+| R10-10 | none | | Architecture section 9: one sentence saying any 400 ends the request, even one that is not the routing server's own, and that this is accepted |
+| R10-11 | `test_fake_osrm.py`: the old 404 test is now SI-12 | `assert 404 == 400` | `scripts/fake_osrm.py`: a GET to a path it does not serve answers 400 `InvalidUrl`, as the real server does. Its docstrings say so. A POST to an unknown path still answers 404: the real server answers only GET, and the stand-in's only POST is its own `/_reset` |
+| R10-12 | QB-21 | `DID NOT RAISE TypeError` | `verify_response` raises `TypeError` when `routing_hosts` is a string. Its docstring says it takes a list |
+| R10-13 | `test_vr04_the_verifiers_copy_of_the_hand_added_places_is_the_applications` | Scratch mutant, the verifier's Henrico 0.1° of longitude off: the old VR-04 passed. The new test failed: `{('VA', 'Henrico'): (37.5131, -77.24650000000001)} != {('VA', 'Henrico'): (37.5131, -77.3465)}` | The test compares the two tables value for value. VR-04's row says so |
+| R10-16 | none | | The comment at `tests/test_fuel.py:178` (comment only) and FU-23's row now describe what the test asserts: one purchase only is 0.005 gallons or more. They no longer state a counting rule |
+
+### Deviation
+
+**R13 allows one repeat: the end point may repeat the point before it.** The ruling says R13 rejects repeated points. Without this exception, VR-03 failed with `R13: repeated points: 1, the first after point 1980`, and every endpoint test would fail the same way. The test roads are whole numbers of miles long, so the planner's re-spaced line ends 0.000006 miles past the last half-mile point (1,982 points on EP-01's road), and both are cut to the same 5 decimals. A real road ends so only when its last stretch is under about a metre, which is rare (under 1 trip in 1,000, judging by the length of that stretch). Allowing only that one repeat keeps the padding attack closed: QB-19's 29 further repeats are refused. One extra end point can move a stop at most half a mile near the finish, which R12's bracket already allowed. R13's text in section 4 says this.
+
+### Rows corrected or added
+
+Section 4: R13 and R17. Rows changed: AN-11, QB-13, FU-23, SI-07, VR-04. Rows added: SI-12, CF-37, QB-18 to QB-23.
+
+### Totals
+
+```
+DATABASE_URL=postgresql://milemarker:milemarker@127.0.0.1:5432/milemarker_c uv run pytest -q
+463 passed, 1 deselected
+uv run pytest -m slow -q                 1 passed, 463 deselected
+uv run mypy                              Success: no issues found in 6 source files
+uv run ruff check .                      All checks passed!
+uv run ruff format --check .             54 files already formatted
+```
+
+This pass added 14 tests: 10 in `test_verify.py`, 1 in `test_answer.py`, 2 in `test_routing.py`, and 1 in `test_fake_osrm.py` (SI-12 replaces the old 404 test).
+
+### Concerns
+
+- **R12's text is unchanged.** The review proposed saying there that the line itself is trusted. This pass may change only R13 and R17 in section 4, so R13's text says instead that R12 takes its scale from the number of points.
+- **R17 now depends on exactly where the application places a station.** If `stations/places.py` changed its rule, for example to average a chosen county's several rows, R17 would have to follow. Today every station stands exactly on one of R17's points.

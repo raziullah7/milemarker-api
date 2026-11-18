@@ -84,10 +84,10 @@ def build_answer(
 
     lowest_gallons, lowest_costs = _bill(cheapest, total_gallons)
     lowest_cost = sum(lowest_costs)
-    # Stops are counted as the plan's are: a purchase shown as 0.00 gallons is no stop, though
-    # its fuel is in the bill above. So at stop cost 0, where the plan is the free-stops
-    # plan, the two counts are equal.
-    lowest_stops = max(1, sum(amount > 0 for amount in lowest_gallons))
+    # Stops are counted as the plan's are: the fill-up at the start always, and after it no
+    # purchase shown as 0.00 gallons, though its fuel is in the bill above. So at stop cost
+    # 0, where the plan is the free-stops plan, the two counts are equal.
+    lowest_stops = 1 + sum(amount > 0 for amount in lowest_gallons[1:])
     # Each bill is rounded stop by stop, so when the two plans' exact bills are within a
     # cent or two, the free-stops bill can come out above the plan's. The plan's own bill
     # can be bought, so the lowest possible is never more than it: show the plan's figures.

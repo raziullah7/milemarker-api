@@ -1,4 +1,4 @@
-"""Tests for the routing client (RT-01 to RT-14, and QB-04 to QB-06 and QB-16 of
+"""Tests for the routing client (RT-01 to RT-14, and QB-04 to QB-06, QB-16 and QB-23 of
 docs/test-cases.md, section 9.13). Every request goes to httpx.MockTransport."""
 
 import threading
@@ -304,6 +304,22 @@ def test_qb04_an_answer_about_one_server_tries_the_other(answer):
 @pytest.mark.parametrize("status", [204, 301, 307, 408, 410, 451])
 def test_qb05_any_other_answer_that_is_not_a_route_tries_the_other(status):
     route = Fake(httpx.Response(status), ok()).fetch()
+    assert route.calls == 2
+
+
+def test_qb23_no_road_is_final_whatever_the_status_below_500():
+    """Review 10R, finding R10-09. "No road" is read from the body, short of a server
+    error: a 404 carrying it ends the request with NoRoute, server 2 never asked."""
+    fake = Fake(httpx.Response(404, json=NO_ROUTE_ANSWER), None)
+    with pytest.raises(NoRoute):
+        fake.fetch()
+    assert len(fake.requests) == 1
+
+
+def test_qb23_a_server_error_saying_no_road_tries_the_other():
+    """R10-09: a 5xx is the server's own trouble, whatever its body says."""
+    route = Fake(httpx.Response(503, json=NO_ROUTE_ANSWER), ok()).fetch()
+    assert route.server == SERVER_2
     assert route.calls == 2
 
 
