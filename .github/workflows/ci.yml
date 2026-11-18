@@ -75,10 +75,11 @@ jobs:
       - name: Start the end-to-end stack
         run: $COMPOSE up --build -d
       - name: Wait for the API
-        # The first start loads the stations, so allow a few minutes.
+        # The first start loads the stations, so allow a few minutes. Any HTTP answer means
+        # the API is up: without parameters the route answers 400, so no -f here.
         run: |
           for i in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:8000/api/v1/health/; then exit 0; fi
+            if curl -sS -o /dev/null http://127.0.0.1:8000/api/v1/route/; then exit 0; fi
             sleep 5
           done
           echo "The API did not answer in time" >&2
