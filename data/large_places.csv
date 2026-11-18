@@ -1,0 +1,749 @@
+state,city,population
+AL,Auburn,82025
+AL,Birmingham,196644
+AL,Decatur,58321
+AL,Dothan,71258
+AL,Huntsville,225564
+AL,Madison,60854
+AL,Mobile,182595
+AL,Montgomery,195287
+AL,Tuscaloosa,111338
+AR,Bentonville,59471
+AR,Conway,69580
+AR,Fayetteville,101680
+AR,Fort Smith,89770
+AR,Jonesboro,80650
+AR,Little Rock,203842
+AR,North Little Rock,64531
+AR,Rogers,74035
+AR,Springdale,88224
+AZ,Avondale,93545
+AZ,Buckeye,108909
+AZ,Casa Grande,63743
+AZ,Chandler,280167
+AZ,Flagstaff,76586
+AZ,Gilbert,275411
+AZ,Glendale,253855
+AZ,Goodyear,111805
+AZ,Lake Havasu City,59257
+AZ,Marana,58430
+AZ,Maricopa,71022
+AZ,Mesa,511648
+AZ,Peoria,198750
+AZ,Phoenix,1650070
+AZ,Prescott Valley,50045
+AZ,Queen Creek,76570
+AZ,Scottsdale,244394
+AZ,Surprise,158285
+AZ,Tempe,189834
+AZ,Tucson,547239
+AZ,Yuma,100858
+CA,Alameda,75353
+CA,Alhambra,79776
+CA,Aliso Viejo,50263
+CA,Anaheim,340512
+CA,Antioch,117096
+CA,Apple Valley,75036
+CA,Arcadia,54157
+CA,Bakersfield,413381
+CA,Baldwin Park,68806
+CA,Beaumont,58463
+CA,Bellflower,75122
+CA,Berkeley,118962
+CA,Brentwood,65126
+CA,Buena Park,81958
+CA,Burbank,102755
+CA,Camarillo,69514
+CA,Carlsbad,113495
+CA,Carson,91139
+CA,Cathedral City,52356
+CA,Chico,101301
+CA,Chino,93114
+CA,Chino Hills,77212
+CA,Chula Vista,274333
+CA,Citrus Heights,86239
+CA,Clovis,125826
+CA,Colton,53357
+CA,Compton,90986
+CA,Concord,122315
+CA,Corona,160238
+CA,Costa Mesa,108354
+CA,Cupertino,57285
+CA,Daly City,99833
+CA,Davis,65832
+CA,Delano,51500
+CA,Diamond Bar,52041
+CA,Downey,108816
+CA,Dublin,69128
+CA,El Cajon,102991
+CA,El Monte,103794
+CA,Elk Grove,178444
+CA,Encinitas,60841
+CA,Escondido,148122
+CA,Fairfield,120768
+CA,Folsom,84782
+CA,Fontana,215465
+CA,Fountain Valley,55468
+CA,Fremont,226208
+CA,Fresno,545716
+CA,Fullerton,139250
+CA,Garden Grove,168234
+CA,Gardena,58377
+CA,Gilroy,58250
+CA,Glendale,187050
+CA,Hanford,59938
+CA,Hawthorne,83364
+CA,Hayward,155675
+CA,Hemet,92368
+CA,Hesperia,100633
+CA,Highland,56202
+CA,Huntington Beach,192129
+CA,Huntington Park,51942
+CA,Indio,93057
+CA,Inglewood,102865
+CA,Irvine,314621
+CA,La Habra,60991
+CA,La Mesa,60537
+CA,Laguna Niguel,62899
+CA,Lake Elsinore,73028
+CA,Lake Forest,85840
+CA,Lakewood,78135
+CA,Lancaster,166236
+CA,Lincoln,54538
+CA,Livermore,82908
+CA,Lodi,67679
+CA,Long Beach,449468
+CA,Los Angeles,3820914
+CA,Lynwood,63234
+CA,Madera,68079
+CA,Manteca,91059
+CA,Menifee,113433
+CA,Merced,93692
+CA,Milpitas,77321
+CA,Mission Viejo,90624
+CA,Modesto,218915
+CA,Montebello,60015
+CA,Monterey Park,57877
+CA,Moreno Valley,212392
+CA,Mountain View,81785
+CA,Murrieta,111878
+CA,Napa,77492
+CA,National City,55236
+CA,Newport Beach,82637
+CA,Norwalk,98078
+CA,Novato,51722
+CA,Oakland,436504
+CA,Oceanside,170020
+CA,Ontario,182457
+CA,Orange,138337
+CA,Oxnard,198488
+CA,Palm Desert,51951
+CA,Palmdale,161404
+CA,Palo Alto,65882
+CA,Paramount,51072
+CA,Pasadena,133560
+CA,Perris,80603
+CA,Petaluma,58800
+CA,Pico Rivera,59189
+CA,Pittsburg,75803
+CA,Placentia,52192
+CA,Pleasanton,74653
+CA,Pomona,145502
+CA,Porterville,62876
+CA,Rancho Cordova,82605
+CA,Rancho Cucamonga,174405
+CA,Redding,92727
+CA,Redlands,72556
+CA,Redondo Beach,67749
+CA,Redwood City,80996
+CA,Rialto,103391
+CA,Richmond,114106
+CA,Riverside,318858
+CA,Rocklin,73472
+CA,Roseville,159135
+CA,Sacramento,526384
+CA,Salinas,159506
+CA,San Bernardino,223728
+CA,San Clemente,62313
+CA,San Diego,1388320
+CA,San Francisco,808988
+CA,San Jacinto,55440
+CA,San Jose,969655
+CA,San Leandro,85784
+CA,San Marcos,94188
+CA,San Mateo,101327
+CA,San Rafael,59555
+CA,San Ramon,84929
+CA,Santa Ana,310539
+CA,Santa Barbara,86499
+CA,Santa Clara,131062
+CA,Santa Clarita,224028
+CA,Santa Cruz,61501
+CA,Santa Maria,109987
+CA,Santa Monica,89922
+CA,Santa Rosa,175845
+CA,Santee,59478
+CA,Simi Valley,125113
+CA,South Gate,90070
+CA,South San Francisco,63123
+CA,Stockton,319543
+CA,Sunnyvale,151967
+CA,Temecula,110682
+CA,Thousand Oaks,123463
+CA,Torrance,139224
+CA,Tracy,98010
+CA,Tulare,71092
+CA,Turlock,72100
+CA,Tustin,77704
+CA,Union City,65414
+CA,Upland,78699
+CA,Vacaville,102526
+CA,Vallejo,122807
+CA,Ventura,109058
+CA,Victorville,138869
+CA,Visalia,144998
+CA,Vista,98344
+CA,Walnut Creek,69152
+CA,Watsonville,50867
+CA,West Covina,105617
+CA,West Sacramento,55842
+CA,Westminster,88729
+CA,Whittier,84143
+CA,Woodland,61123
+CA,Yorba Linda,66147
+CA,Yuba City,68666
+CA,Yucaipa,53947
+CO,Arvada,121414
+CO,Aurora,395052
+CO,Boulder,105898
+CO,Broomfield,76860
+CO,Castle Rock,81415
+CO,Colorado Springs,488664
+CO,Commerce City,68245
+CO,Denver,716577
+CO,Fort Collins,170376
+CO,Grand Junction,69412
+CO,Greeley,112609
+CO,Longmont,98630
+CO,Loveland,79352
+CO,Parker,62743
+CO,Pueblo,111077
+CO,Westminster,114875
+CT,Bridgeport,148028
+CT,Bristol,61601
+CT,Danbury,86124
+CT,Hartford,119669
+CT,Meriden,60111
+CT,Milford,50421
+CT,New Britain,74080
+CT,New Haven,135319
+CT,Norwalk,92458
+CT,Stamford,136226
+CT,Waterbury,114990
+CT,West Haven,54790
+DC,Washington,678972
+DE,Wilmington,71675
+FL,Apopka,59113
+FL,Boca Raton,99974
+FL,Bonita Springs,56229
+FL,Boynton Beach,81267
+FL,Bradenton,57076
+FL,Cape Coral,224455
+FL,Clearwater,116850
+FL,Coconut Creek,57694
+FL,Daytona Beach,82485
+FL,Deerfield Beach,87325
+FL,Delray Beach,67536
+FL,Deltona,98739
+FL,Fort Lauderdale,184255
+FL,Fort Myers,97372
+FL,Gainesville,145812
+FL,Hialeah,221300
+FL,Hollywood,153859
+FL,Homestead,81659
+FL,Jacksonville,985843
+FL,Jupiter,61291
+FL,Kissimmee,81269
+FL,Lakeland,122264
+FL,Largo,82248
+FL,Melbourne,86960
+FL,Miami,455924
+FL,Miami Beach,79607
+FL,North Port,88934
+FL,Ocala,68426
+FL,Orlando,320742
+FL,Palm Bay,135566
+FL,Palm Beach Gardens,61146
+FL,Palm Coast,102113
+FL,Pembroke Pines,171119
+FL,Pensacola,53724
+FL,Pinellas Park,53456
+FL,Pompano Beach,113619
+FL,Port Orange,65966
+FL,Port Saint Lucie,245021
+FL,Saint Cloud,66448
+FL,Saint Petersburg,263553
+FL,Sanford,65394
+FL,Sarasota,57602
+FL,Tallahassee,202221
+FL,Tampa,403364
+FL,West Palm Beach,124130
+FL,Winter Haven,57109
+GA,Albany,66877
+GA,Alpharetta,67056
+GA,Athens,128628
+GA,Atlanta,510823
+GA,Augusta,200884
+GA,Columbus,201877
+GA,Macon,156512
+GA,Marietta,62769
+GA,Roswell,91706
+GA,Savannah,147748
+GA,Smyrna,56566
+GA,Valdosta,55025
+GA,Warner Robins,84537
+IA,Ames,65686
+IA,Ankeny,74458
+IA,Cedar Rapids,135958
+IA,Council Bluffs,62399
+IA,Davenport,100354
+IA,Des Moines,210381
+IA,Dubuque,58877
+IA,Iowa City,75678
+IA,Sioux City,85727
+IA,Waterloo,66606
+IA,West Des Moines,72205
+ID,Boise,235421
+ID,Caldwell,68336
+ID,Coeur D Alene,56894
+ID,Idaho Falls,68001
+ID,Meridian,134801
+ID,Nampa,114268
+ID,Pocatello,58064
+ID,Twin Falls,54943
+IL,Arlington Heights,74495
+IL,Aurora,177563
+IL,Berwyn,54414
+IL,Bloomington,78587
+IL,Bolingbrook,74088
+IL,Champaign,89189
+IL,Chicago,2664452
+IL,Cicero,81004
+IL,Decatur,68670
+IL,Des Plaines,58010
+IL,Elgin,113310
+IL,Evanston,75070
+IL,Hoffman Estates,50179
+IL,Joliet,150489
+IL,Mount Prospect,54298
+IL,Naperville,150245
+IL,Normal,52618
+IL,Oak Lawn,55734
+IL,Oak Park,52055
+IL,Orland Park,57074
+IL,Palatine,64869
+IL,Peoria,110460
+IL,Rockford,146120
+IL,Schaumburg,75750
+IL,Skokie,64937
+IL,Springfield,112544
+IL,Tinley Park,53886
+IL,Waukegan,87642
+IL,Wheaton,52938
+IN,Anderson,55199
+IN,Bloomington,78840
+IN,Carmel,102296
+IN,Columbus,51522
+IN,Elkhart,53484
+IN,Evansville,115332
+IN,Fishers,104094
+IN,Fort Wayne,269994
+IN,Gary,67652
+IN,Greenwood,66296
+IN,Hammond,76193
+IN,Indianapolis,879293
+IN,Jeffersonville,51235
+IN,Kokomo,59890
+IN,Lafayette,71216
+IN,Mishawaka,50842
+IN,Muncie,65081
+IN,Noblesville,73916
+IN,South Bend,103395
+IN,Terre Haute,58502
+IN,Westfield,57746
+KS,Kansas City,152933
+KS,Lawrence,96207
+KS,Lenexa,58536
+KS,Manhattan,53682
+KS,Olathe,147461
+KS,Overland Park,197089
+KS,Shawnee,69417
+KS,Topeka,125475
+KS,Wichita,396119
+KY,Bowling Green,76212
+KY,Lexington,320154
+KY,Louisville,622981
+KY,Owensboro,60140
+LA,Baton Rouge,219573
+LA,Bossier City,62738
+LA,Kenner,63333
+LA,Lafayette,121467
+LA,Lake Charles,79633
+LA,New Orleans,364136
+LA,Shreveport,177959
+MA,Boston,653833
+MA,Brockton,104890
+MA,Cambridge,118214
+MA,Chicopee,54838
+MA,Everett,50318
+MA,Fall River,93840
+MA,Framingham,71875
+MA,Haverhill,67415
+MA,Lawrence,88172
+MA,Lowell,114296
+MA,Lynn,101241
+MA,Malden,65133
+MA,Medford,58744
+MA,Methuen,53455
+MA,New Bedford,100695
+MA,Newton,88415
+MA,Peabody,54056
+MA,Quincy,101597
+MA,Revere,57954
+MA,Somerville,80407
+MA,Springfield,153672
+MA,Taunton,60412
+MA,Waltham,64477
+MA,Weymouth,59114
+MA,Worcester,207621
+MD,Baltimore,565239
+MD,Bowie,57254
+MD,Frederick,85793
+MD,Gaithersburg,69563
+MD,Rockville,67297
+ME,Portland,69104
+MI,Ann Arbor,119381
+MI,Battle Creek,52175
+MI,Dearborn,105811
+MI,Dearborn Heights,60872
+MI,Detroit,633218
+MI,Flint,79661
+MI,Grand Rapids,196608
+MI,Kalamazoo,73126
+MI,Lansing,112115
+MI,Livonia,92185
+MI,Novi,66314
+MI,Pontiac,61689
+MI,Royal Oak,57452
+MI,Saint Clair Shores,57548
+MI,Southfield,75687
+MI,Sterling Heights,133306
+MI,Taylor,61241
+MI,Troy,87339
+MI,Warren,136655
+MI,Westland,82574
+MI,Wyoming,77451
+MN,Burnsville,64772
+MN,Duluth,87680
+MN,Eden Prairie,62166
+MN,Lakeville,76243
+MN,Minneapolis,425115
+MN,Minnetonka,52463
+MN,Rochester,122413
+MN,Saint Cloud,71013
+MN,Saint Paul,303820
+MO,Blue Springs,60539
+MO,Columbia,129330
+MO,Florissant,51128
+MO,Independence,120922
+MO,Joplin,53095
+MO,Kansas City,510704
+MO,Lees Summit,104184
+MO,O Fallon,94074
+MO,Saint Charles,71800
+MO,Saint Joseph,70634
+MO,Saint Louis,281754
+MO,Saint Peters,59413
+MO,Springfield,170188
+MS,Gulfport,72823
+MS,Jackson,143709
+MS,Southaven,56851
+MT,Billings,120864
+MT,Bozeman,57305
+MT,Great Falls,60422
+MT,Missoula,77757
+NC,Apex,72225
+NC,Asheville,95056
+NC,Burlington,60032
+NC,Cary,180010
+NC,Chapel Hill,62043
+NC,Charlotte,911311
+NC,Concord,110119
+NC,Durham,296186
+NC,Fayetteville,209749
+NC,Gastonia,83942
+NC,Greensboro,302296
+NC,Greenville,90053
+NC,High Point,116926
+NC,Huntersville,64688
+NC,Jacksonville,72879
+NC,Kannapolis,59321
+NC,Mooresville,53721
+NC,Raleigh,482295
+NC,Rocky Mount,54245
+NC,Wake Forest,54337
+NC,Wilmington,122698
+NC,Winston Salem,252975
+ND,Bismarck,75092
+ND,Fargo,133188
+ND,Grand Forks,58921
+NE,Bellevue,63922
+NE,Grand Island,52622
+NE,Lincoln,294757
+NE,Omaha,483335
+NH,Manchester,115474
+NH,Nashua,91003
+NJ,Bayonne,70300
+NJ,Camden,71100
+NJ,Clifton,88461
+NJ,East Orange,69556
+NJ,Elizabeth,135829
+NJ,Hoboken,57010
+NJ,Jersey City,291657
+NJ,New Brunswick,55846
+NJ,Newark,304960
+NJ,Passaic,68903
+NJ,Paterson,156452
+NJ,Perth Amboy,55249
+NJ,Plainfield,54670
+NJ,Trenton,89620
+NJ,Union City,64462
+NJ,Vineland,60797
+NJ,West New York,50754
+NM,Albuquerque,560274
+NM,Las Cruces,114892
+NM,Rio Rancho,110660
+NM,Santa Fe,89167
+NV,Carson City,58036
+NV,Henderson,337305
+NV,Las Vegas,660929
+NV,North Las Vegas,284771
+NV,Reno,274915
+NV,Sparks,110323
+NY,Albany,101228
+NY,Buffalo,274678
+NY,Hempstead,58225
+NY,Mount Vernon,71168
+NY,New Rochelle,83742
+NY,New York,8258035
+NY,Rochester,207274
+NY,Schenectady,68544
+NY,Syracuse,145560
+NY,Troy,50607
+NY,Utica,63607
+NY,White Plains,61288
+NY,Yonkers,207657
+OH,Akron,188701
+OH,Canton,69197
+OH,Cincinnati,311097
+OH,Cleveland,362656
+OH,Columbus,913175
+OH,Cuyahoga Falls,50742
+OH,Dayton,135512
+OH,Elyria,53117
+OH,Hamilton,62997
+OH,Lorain,65337
+OH,Middletown,51478
+OH,Newark,51046
+OH,Springfield,58082
+OH,Toledo,265304
+OH,Youngstown,59108
+OK,Broken Arrow,119194
+OK,Edmond,98103
+OK,Enid,50577
+OK,Lawton,90245
+OK,Norman,130046
+OK,Oklahoma City,702767
+OK,Tulsa,411894
+OR,Albany,57053
+OR,Beaverton,96945
+OR,Bend,104557
+OR,Corvallis,61087
+OR,Eugene,177899
+OR,Gresham,110685
+OR,Hillsboro,107730
+OR,Medford,85098
+OR,Portland,630498
+OR,Salem,177432
+OR,Springfield,61085
+PA,Allentown,124880
+PA,Bethlehem,78300
+PA,Erie,92957
+PA,Harrisburg,50012
+PA,Lancaster,57153
+PA,Philadelphia,1550542
+PA,Pittsburgh,303255
+PA,Reading,94903
+PA,Scranton,75805
+RI,Cranston,82635
+RI,Pawtucket,75321
+RI,Providence,190792
+RI,Warwick,82999
+SC,Charleston,155369
+SC,Columbia,142416
+SC,Greenville,72824
+SC,Mount Pleasant,95232
+SC,North Charleston,121469
+SC,Rock Hill,75654
+SC,Summerville,51884
+SD,Rapid City,79404
+SD,Sioux Falls,206410
+TN,Chattanooga,187030
+TN,Clarksville,180716
+TN,Collierville,51317
+TN,Franklin,88558
+TN,Gallatin,50355
+TN,Hendersonville,63618
+TN,Jackson,68264
+TN,Johnson City,73337
+TN,Kingsport,56704
+TN,Knoxville,198162
+TN,Memphis,618639
+TN,Murfreesboro,165430
+TN,Nashville,687788
+TN,Smyrna,57418
+TN,Spring Hill,57637
+TX,Abilene,129043
+TX,Allen,111620
+TX,Amarillo,202408
+TX,Arlington,398431
+TX,Austin,979882
+TX,Baytown,84067
+TX,Beaumont,112193
+TX,Brownsville,190158
+TX,Bryan,89615
+TX,Burleson,55220
+TX,Carrollton,132918
+TX,Cedar Park,77516
+TX,College Station,125192
+TX,Conroe,108248
+TX,Corpus Christi,316595
+TX,Dallas,1302868
+TX,Denton,158349
+TX,Desoto,55740
+TX,Edinburg,105799
+TX,El Paso,678958
+TX,Euless,59686
+TX,Flower Mound,79445
+TX,Fort Worth,978468
+TX,Frisco,225007
+TX,Galveston,53237
+TX,Garland,243470
+TX,Georgetown,96312
+TX,Grand Prairie,202134
+TX,Grapevine,50928
+TX,Harlingen,71510
+TX,Houston,2314157
+TX,Irving,254373
+TX,Killeen,159643
+TX,Kyle,62548
+TX,Laredo,257602
+TX,League City,116320
+TX,Leander,80067
+TX,Lewisville,133553
+TX,Little Elm,58496
+TX,Longview,83236
+TX,Lubbock,266878
+TX,Mansfield,78542
+TX,Mcallen,146593
+TX,Mckinney,213509
+TX,Mesquite,147317
+TX,Midland,138397
+TX,Mission,87292
+TX,Missouri City,76773
+TX,New Braunfels,110958
+TX,North Richland Hills,70658
+TX,Odessa,115743
+TX,Pasadena,146716
+TX,Pearland,127736
+TX,Pflugerville,65301
+TX,Pharr,80410
+TX,Plano,290190
+TX,Port Arthur,55547
+TX,Richardson,117435
+TX,Rockwall,52918
+TX,Round Rock,130406
+TX,Rowlett,66813
+TX,San Angelo,99262
+TX,San Antonio,1495295
+TX,San Marcos,71569
+TX,Sugar Land,108515
+TX,Temple,93095
+TX,Texas City,56609
+TX,Tyler,110327
+TX,Victoria,65800
+TX,Waco,144816
+TX,Wichita Falls,102691
+TX,Wylie,61078
+UT,Eagle Mountain,56932
+UT,Herriman,60049
+UT,Layton,83516
+UT,Lehi,90227
+UT,Logan,55250
+UT,Ogden,87267
+UT,Orem,95519
+UT,Provo,113343
+UT,Saint George,104578
+UT,Salt Lake City,209593
+UT,Sandy,91943
+UT,Saratoga Springs,52532
+UT,South Jordan,84528
+UT,West Jordan,114908
+VA,Alexandria,155230
+VA,Chesapeake,253886
+VA,Hampton,137098
+VA,Harrisonburg,51082
+VA,Lynchburg,79535
+VA,Newport News,183118
+VA,Norfolk,230930
+VA,Portsmouth,96793
+VA,Richmond,229247
+VA,Roanoke,97171
+VA,Suffolk,100659
+VA,Virginia Beach,453649
+WA,Auburn,83870
+WA,Bellevue,151574
+WA,Bellingham,94720
+WA,Bothell,50213
+WA,Everett,111180
+WA,Federal Way,97701
+WA,Kennewick,85158
+WA,Kent,133378
+WA,Kirkland,91194
+WA,Lacey,58326
+WA,Lakewood,62303
+WA,Marysville,72916
+WA,Olympia,55733
+WA,Pasco,80038
+WA,Redmond,80280
+WA,Renton,104491
+WA,Richland,63757
+WA,Sammamish,65116
+WA,Seattle,755078
+WA,Spokane,229447
+WA,Tacoma,222906
+WA,Vancouver,196442
+WA,Yakima,96750
+WI,Appleton,74719
+WI,Eau Claire,70542
+WI,Green Bay,105744
+WI,Janesville,66102
+WI,Kenosha,98211
+WI,La Crosse,51327
+WI,Madison,280305
+WI,Milwaukee,561385
+WI,Oshkosh,66184
+WI,Racine,76602
+WI,Waukesha,70446
+WY,Casper,58720
+WY,Cheyenne,65168

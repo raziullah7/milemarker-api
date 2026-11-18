@@ -17,6 +17,9 @@ from stations.exceptions import OutsideCoverage, UnknownPlace
 from stations.types import Place  # kept in types.py, Django-free; stations.places.Place works
 
 MAX_SUGGESTIONS = 5
+# A name typed with no state must be this close to a large place's name to be suggested.
+# 0.7 (measured) keeps one-letter slips such as "Dalas" and "Memfis" and drops noise.
+LARGE_PLACE_CUTOFF = 0.7
 
 # The lower 48 states and DC, which the API covers.
 COVERED_STATES = {
@@ -98,6 +101,7 @@ class _Table:
 
 
 _table: _Table | None = None
+_large_places: dict[tuple[str, str], int] | None = None  # (state, city key) -> population
 _cities_path: Path | None = None  # None means settings.CITIES_CSV
 
 
@@ -182,16 +186,49 @@ def _split_trailing_state(text: str) -> tuple[str, str | None]:
     return text, None
 
 
+def _get_large_places() -> dict[tuple[str, str], int]:
+    """The population of each place in data/large_places.csv, read the first time it is needed."""
+    global _large_places
+    if _large_places is None:
+        path = Path(settings.DATA_DIR) / "large_places.csv"
+        with open(path, encoding="utf-8", newline="") as f:
+            _large_places = {
+                (row["state"], _city_key(row["city"])): int(row["population"])
+                for row in csv.DictReader(f)
+            }
+    return _large_places
+
+
 def _suggestions(city_key: str, state: str | None, table: _Table) -> list[str]:
-    """Up to five "City, ST" labels: close names in the state, or the city in other states."""
+    """Up to five "City, ST" labels.
+
+    With a known state: close names in that state. Without one: the city in the states
+    that have it, the most populous first; or, if no state has it, close names among the
+    large places, the most populous first.
+    """
     if not city_key:
         return []
     if state in COVERED_STATES:
         keys_in_state = [k for (s, k) in table.places if s == state]
         close = difflib.get_close_matches(city_key, keys_in_state, n=MAX_SUGGESTIONS)
         return [table.places[(state, k)].label for k in close]
-    states_with_city = sorted(s for (s, k) in table.places if k == city_key)
-    return [table.places[(s, city_key)].label for s in states_with_city[:MAX_SUGGESTIONS]]
+
+    large = _get_large_places()
+    states_with_city = [s for (s, k) in table.places if k == city_key]
+    if states_with_city:
+        ranked = sorted(states_with_city, key=lambda s: (-large.get((s, city_key), 0), s))
+        return [table.places[(s, city_key)].label for s in ranked[:MAX_SUGGESTIONS]]
+
+    large_keys = {k for (_, k) in large}
+    close_keys = set(
+        difflib.get_close_matches(
+            city_key, large_keys, n=MAX_SUGGESTIONS, cutoff=LARGE_PLACE_CUTOFF
+        )
+    )
+    matches = sorted(
+        ((p, s, k) for (s, k), p in large.items() if k in close_keys), key=lambda m: (-m[0], m[1])
+    )
+    return [table.places[(s, k)].label for _, s, k in matches[:MAX_SUGGESTIONS]]
 
 
 def resolve(text: str, field: str) -> Place:

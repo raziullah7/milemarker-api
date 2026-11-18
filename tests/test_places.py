@@ -1,6 +1,7 @@
 """Cases PL-01 to PL-21: turning place names into coordinates, offline."""
 
 import csv
+import time
 
 import pytest
 from django.conf import settings
@@ -315,6 +316,45 @@ def test_pl19_unrecognised_state_still_suggests():
     with pytest.raises(UnknownPlace) as caught:
         resolve("Springfield, ZZ", "start")
     assert len(caught.value.details["suggestions"]) <= 5
+
+
+def _suggestions_for(text):
+    with pytest.raises(UnknownPlace) as caught:
+        resolve(text, "start")
+    return caught.value.details["suggestions"]
+
+
+def _fifty_largest_places():
+    path = settings.DATA_DIR / "large_places.csv"
+    with open(path, encoding="utf-8", newline="") as f:
+        rows = sorted(csv.DictReader(f), key=lambda r: -int(r["population"]))
+    return [(r["city"], r["state"]) for r in rows[:50]]
+
+
+@pytest.mark.parametrize(("city", "state"), _fifty_largest_places())
+def test_pl22_a_large_city_with_no_state_gets_its_own_state_first(city, state):
+    assert _suggestions_for(city)[0] == f"{city}, {state}"
+
+
+def test_pl23_dallas_with_no_state_offers_texas_first():
+    assert _suggestions_for("Dallas")[0] == "Dallas, TX"
+
+
+def test_pl23_a_misspelt_large_city_with_no_state_is_found():
+    assert "Dallas, TX" in _suggestions_for("Dalas")
+    assert "Houston, TX" in _suggestions_for("Houstan")
+
+
+def test_pl23_gibberish_with_no_state_gets_nothing():
+    assert _suggestions_for("Qwxzy") == []
+
+
+def test_pl23_the_no_state_fuzzy_lookup_is_fast():
+    _suggestions_for("Dalas")  # reads data/large_places.csv the first time
+    start = time.perf_counter()
+    for _ in range(20):
+        _suggestions_for("Houstan")
+    assert (time.perf_counter() - start) / 20 < 0.05
 
 
 @pytest.mark.parametrize("text", ["75201", "1600 Pennsylvania Ave, Washington, DC"])
