@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.15-slim
 
 # A pinned uv, so the build does not change when uv does. Only the binary is copied.
 COPY --from=ghcr.io/astral-sh/uv:0.11.19 /uv /bin/uv
