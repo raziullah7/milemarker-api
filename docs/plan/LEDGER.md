@@ -35,3 +35,4 @@ Repo: this repository (commit identity must be `Razi Ullah <50240668+raziullah7@
 - Phase 3 task 3F (answer builder) reviewed by the controller. Review round 1 sent back to the builder: a purchase rounding to 0.00 gallons is not shown as a stop; the lowest possible bill is never shown above the plan's bill. Both written into architecture section 8. 21 tests pass, run by the controller.
 - Phase 3 task 3C (fuel plan) reviewed by the controller: fuel.py and tests/exact.py read in full. Full suite 220 passed, slow 1 passed. FU-26 added to the catalogue; EX-02 and EX-04 wording updated.
 - **Phase 3: complete (commits 5f49cb3, 4a69c73, e706163, 7db6c35, 28e8c00).** Gate 3 passed: 220 tests + 1 slow, lint clean.
+- Phase 4 started. One builder (4E, Opus): planner, view, serializers, urls, errors, with EP-01 to EP-40 and S04. Brief: briefs/phase4-E-api.md.
