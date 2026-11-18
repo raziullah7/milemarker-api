@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# A newer push to the same branch makes the older run pointless.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        # Same user, password and database as docker-compose.yml: the default DATABASE_URL.
+        env:
+          POSTGRES_USER: milemarker
+          POSTGRES_PASSWORD: milemarker
+          POSTGRES_DB: milemarker
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U milemarker -d milemarker"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://milemarker:milemarker@127.0.0.1:5432/milemarker
+    steps:
+      - uses: actions/checkout@v7
+      # setup-uv publishes exact version tags only after v7, with no moving major tag.
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run python manage.py makemigrations --check --dry-run
+      - name: Tests with coverage
+        run: uv run pytest --cov
+      - name: Coverage in the job summary
+        if: always()
+        run: |
+          echo "## Coverage" >> "$GITHUB_STEP_SUMMARY"
+          uv run coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY" || true
+      - name: Slow exactness test
+        run: uv run pytest -m slow
+      - run: uv run pip-audit
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE: docker compose -f docker-compose.yml -f docker-compose.e2e.yml
+    steps:
+      - uses: actions/checkout@v7
+      - name: Start the end-to-end stack
+        run: $COMPOSE up --build -d
+      - name: Wait for the API
+        # The first start loads the stations, so allow a few minutes.
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/api/v1/health/; then exit 0; fi
+            sleep 5
+          done
+          echo "The API did not answer in time" >&2
+          exit 1
+      - name: Postman collection
+        run: npx --yes newman@6.2.3 run docs/postman/milemarker.postman_collection.json --env-var base_url=http://127.0.0.1:8000
+      - name: Every routing request matched a recording
+        run: |
+          curl -fsS http://127.0.0.1:5000/_requests | tee requests.json
+          python3 - <<'PY'
+          import json
+          log = json.load(open("requests.json"))
+          unmatched = [r for r in log["requests"] if r["matched"] is None]
+          if not log["requests"]:
+              raise SystemExit("The stand-in served no routing request")
+          if unmatched:
+              raise SystemExit(f"{len(unmatched)} request(s) matched no recording: {unmatched}")
+          print(f"{len(log['requests'])} routing request(s), all matched")
+          PY
+      - name: Container logs
+        if: failure()
+        run: $COMPOSE logs --no-color
+      - name: Stop the stack
+        if: always()
+        run: $COMPOSE down -v

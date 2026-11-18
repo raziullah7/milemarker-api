@@ -4,6 +4,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 
 # Local settings, under any name (.env, .env.local, .env.production); the example is kept
 .env*
