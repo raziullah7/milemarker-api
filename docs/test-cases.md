@@ -11,7 +11,7 @@ Conventions:
 - Prices, gallons and money are compared as exact decimals, not floating point, unless a tolerance is given.
 - "Mile 100" is a distance along the road from the start. A station "4.9 mi N" lies 4.9 miles north of the road.
 
-**Status.** The suite has 656 tests, with the slow exactness test deselected and none skipped. All passed when the controller ran them at the close of Phase 15 (release 2.1.0). Coverage was 98.47% at the close of Phase 11, against a floor of 98%. Section 9 holds 279 cases: 171 Pass, 19 Not run, 3 Fail and 86 Parked. A suite case's Actual names its test, and Pass means that test passes in the suite. A stack case's Actual names the run. Parked means the case belongs to the viewer or to nginx, which are not part of this submission.
+**Status.** The suite has 656 tests, with the slow exactness test deselected and none skipped. All passed when the controller ran them at the close of Phase 15 (release 2.1.0). Coverage at the close of Phase 15 was 98.52% (measured by the controller on 5cd97c0), against a floor of 98%. Section 9 holds 279 cases: 171 Pass, 19 Not run, 3 Fail and 86 Parked. A suite case's Actual names its test, and Pass means that test passes in the suite. A stack case's Actual names the run. Parked means the case belongs to the viewer or to nginx, which are not part of this submission.
 
 ## 1. How the tests are organised
 
@@ -80,7 +80,8 @@ Small CSV (Address and Rack ID hold any value):
 | PL-20 | UC-07 | `75201`; `1600 Pennsylvania Ave, Washington, DC` | `UnknownPlace` each: ZIP codes and street addresses are not accepted (D-3) |
 | PL-21 | UC-07 | `resolve("Chicgo, IL", field="finish")` | The error's field is `finish` and its query `Chicgo, IL` |
 | PL-22 | UC-07 | Each of the 50 most populous places in `data/large_places.csv`, given as the city name alone (50 cases) | `UnknownPlace`; the first suggestion is that city in its own state. Test: `tests/test_places.py::test_pl22_a_large_city_with_no_state_gets_its_own_state_first`. Pass |
-| PL-23 | UC-07 | `Dallas`; `Dalas`; `Houstan`; `Qwxzy`; the call for `Dalas` timed | `Dallas` gives `Dallas, TX`, `Dallas, GA`, `Dallas, IA`, `Dallas, NC`, `Dallas, OR` in that order. `Dalas` gives `Dallas, TX`; `Houstan` gives `Houston, TX`; `Qwxzy` gives none. The call takes under 50 ms. Tests: the four `test_pl23_` tests in `tests/test_places.py`. Pass |
+| PL-23 | UC-07 | `Dallas`; `Dalas`; `Houstan`; `Qwxzy`; the call for `Houstan` timed | `Dallas` gives `Dallas, TX`, `Dallas, GA`, `Dallas, IA`, `Dallas, NC`, `Dallas, OR` in that order. `Dalas` gives `Dallas, TX`; `Houstan` gives `Houston, TX`; `Qwxzy` gives none. The call takes under 50 ms. Tests: the four `test_pl23_` tests in `tests/test_places.py`. Pass |
+| PL-24 | UC-07 | `Orlndo`; `Minnepolis`; `Lexigton`; `Tacma`; `Dalas`; `Houstan` | The first suggestion is `Orlando, FL`; `Minneapolis, MN`; `Lexington, KY`; `Tacoma, WA`; `Dallas, TX`; `Houston, TX`. The closest name comes first; population orders only the states that share one name. Test: `tests/test_places.py::test_pl24_a_misspelling_with_no_state_puts_the_closest_name_first`. Pass |
 
 ### 2.3 Loader and index: `load_stations`, `stations/index.py`
 
@@ -367,7 +368,7 @@ Run by `scripts/live_check.py` against a running server that uses the real routi
 | N02 | UC-15 | `/api/v1/route/?start=&finish=Los Angeles, CA` | 400 | `invalid_request`; details.fields has `start` | 400 invalid_request; error.details.fields {start} | PASS |
 | N03 | UC-07 | `/api/v1/route/?start=Chicgo, IL&finish=Houston, TX` | 400 | `unknown_place`; field `start`; query `Chicgo, IL`; suggestions include `Chicago, IL`, at most 5 | 400 unknown_place; error.details.field start; error.details.query Chicgo, IL; error.details.suggestions ["Chicago, IL", "Cisco, IL", "West Chicago, IL", "North Chicago, IL", "Cicero, IL"] | PASS |
 | N04 | UC-07 | `/api/v1/route/?start=Dallas, TX&finish=Chicago` | 400 | `unknown_place`; field `finish`; suggestions `["Chicago, IL"]` | 400 unknown_place; error.details.field finish; error.details.suggestions ["Chicago, IL"] | PASS |
-| N05 | UC-07 | `/api/v1/route/?start=Dallas, TX&finish=Springfield, ZZ` | 400 | `unknown_place`; field `finish`; at most 5 suggestions | 400 unknown_place; error.details.field finish; error.details.suggestions ["Springfield, MO", "Springfield, MA", "Springfield, IL", "Springfield, OR", "Springfield, OH"] | PASS |
+| N05 | UC-07 | `/api/v1/route/?start=Dallas, TX&finish=Springfield, ZZ` | 400 | `unknown_place`; field `finish`; at most 5 suggestions | 400 unknown_place; error.details.field finish; error.details.suggestions ["Springfield, AR", "Springfield, CO", "Springfield, GA", "Springfield, ID", "Springfield, IL"]. On 19 Nov, the same request to the 2.1.0 API gave ["Springfield, MO", "Springfield, MA", "Springfield, IL", "Springfield, OR", "Springfield, OH"] (observed by the controller). | PASS |
 | N06 | UC-08 | `/api/v1/route/?start=Honolulu, HI&finish=Los Angeles, CA` | 422 | `outside_coverage`; field `start`; query `Honolulu, HI` | 422 outside_coverage; error.details.field start; error.details.query Honolulu, HI | PASS |
 | N07 | UC-08 | `/api/v1/route/?start=Seattle, WA&finish=Anchorage, AK` | 422 | `outside_coverage`; field `finish` | 422 outside_coverage; error.details.field finish | PASS |
 | N08 | UC-08 | `/api/v1/route/?start=Toronto, ON&finish=Buffalo, NY` | 422 | `outside_coverage`; field `start` | 422 outside_coverage; error.details.field start | PASS |

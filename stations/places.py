@@ -204,7 +204,7 @@ def _suggestions(city_key: str, state: str | None, table: _Table) -> list[str]:
 
     With a known state: close names in that state. Without one: the city in the states
     that have it, the most populous first; or, if no state has it, close names among the
-    large places, the most populous first.
+    large places, the closest name first (the most populous state first for one name).
     """
     if not city_key:
         return []
@@ -220,15 +220,14 @@ def _suggestions(city_key: str, state: str | None, table: _Table) -> list[str]:
         return [table.places[(s, city_key)].label for s in ranked[:MAX_SUGGESTIONS]]
 
     large_keys = {k for (_, k) in large}
-    close_keys = set(
-        difflib.get_close_matches(
-            city_key, large_keys, n=MAX_SUGGESTIONS, cutoff=LARGE_PLACE_CUTOFF
-        )
+    close_keys = difflib.get_close_matches(
+        city_key, large_keys, n=MAX_SUGGESTIONS, cutoff=LARGE_PLACE_CUTOFF
     )
-    matches = sorted(
-        ((p, s, k) for (s, k), p in large.items() if k in close_keys), key=lambda m: (-m[0], m[1])
-    )
-    return [table.places[(s, k)].label for _, s, k in matches[:MAX_SUGGESTIONS]]
+    labels = []
+    for key in close_keys:
+        by_population = sorted((-p, s) for (s, k), p in large.items() if k == key)
+        labels.extend(table.places[(s, key)].label for _, s in by_population)
+    return labels[:MAX_SUGGESTIONS]
 
 
 def resolve(text: str, field: str) -> Place:

@@ -324,7 +324,7 @@ Every successful response is also checked against the correctness rules R1 to R1
 
 **Alternative flows**
 
-- A1. No state given (`Chicago`): the suggestions are that city name in the states that have it, the most populous first, up to five (`Dallas` gives `Dallas, TX` first). If no state has the name (`Dalas`), they are the close names among the large places, largest first.
+- A1. No state given (`Chicago`): the suggestions are that city name in the states that have it, the most populous first, up to five (`Dallas` gives `Dallas, TX` first). If no state has the name (`Dalas`), they are the close names among the large places, the closest name first (`Orlndo` gives `Orlando, FL` first).
 - A2. Both places are wrong: the error names `start`.
 - A3. Only the finish is wrong: the error names `finish`.
 - A4. A ZIP code or a street address is sent: `unknown_place`, as neither is accepted.

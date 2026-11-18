@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Mile Marker API
-  version: 2.0.0
+  version: 2.1.0
   description: |-
     Plans the fuel stops of a truck trip between two places in the lower 48 states and DC, and prices them from a table of listed station prices. The truck goes 500 miles on a full 50-gallon tank, at 10 miles per gallon, and leaves with an empty tank.
 

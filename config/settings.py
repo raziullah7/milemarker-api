@@ -211,7 +211,7 @@ SPECTACULAR_SETTINGS = {
         "and `-`; any other is replaced with one of the server's own.\n\n"
         "**Numbers.** Every number is a JSON number. Unknown query parameters are ignored."
     ),
-    "VERSION": "2.0.0",
+    "VERSION": "2.1.0",
     # The document describes the API's trip and health addresses; the schema and docs
     # addresses are described in its opening text, not listed in it.
     "SERVE_INCLUDE_SCHEMA": False,

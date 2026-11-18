@@ -357,6 +357,21 @@ def test_pl23_the_no_state_fuzzy_lookup_is_fast():
     assert (time.perf_counter() - start) / 20 < 0.05
 
 
+@pytest.mark.parametrize(
+    ("typed", "first"),
+    [
+        ("Orlndo", "Orlando, FL"),
+        ("Minnepolis", "Minneapolis, MN"),
+        ("Lexigton", "Lexington, KY"),
+        ("Tacma", "Tacoma, WA"),
+        ("Dalas", "Dallas, TX"),
+        ("Houstan", "Houston, TX"),
+    ],
+)
+def test_pl24_a_misspelling_with_no_state_puts_the_closest_name_first(typed, first):
+    assert _suggestions_for(typed)[0] == first
+
+
 @pytest.mark.parametrize("text", ["75201", "1600 Pennsylvania Ave, Washington, DC"])
 def test_pl20_zip_codes_and_street_addresses_are_unknown(text):
     with pytest.raises(UnknownPlace):

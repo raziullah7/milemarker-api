@@ -162,7 +162,7 @@ The price is stored exactly as the CSV has it (up to 8 decimal places).
 
 - **Found:** the coordinates and a label in the table's own spelling, `City, ST`. The table's spelling is plain: `Saint Louis, MO`, `Winston Salem, NC`, `Mcallen, TX`.
 - **Alaska, Hawaii, Puerto Rico, a Canadian province, or a final part that is `Canada` or `Mexico`:** outside coverage. With no comma, a last word `Canada` or `Mexico` counts only if the text did not end in USA: the caller said the place is in the United States. So `Mexico, USA` is an unknown place, with the US places called Mexico as suggestions, and `Tijuana Mexico USA` an unknown place with none; `Tijuana, Mexico, USA` is still outside coverage.
-- **Anything else:** unknown place, with up to five suggestions as `City, ST`. With a known state they are the closest names in that state. With no state, or a state that is not recognised, they are that city name in the states that have it, the most populous first by US Census population (`data/large_places.csv`, the 748 places of 50,000 or more), then by state code (`Dallas` → `Dallas, TX` first). If no state has that name, they are the close names among those large places only, largest first (`Dalas` → `Dallas, TX`).
+- **Anything else:** unknown place, with up to five suggestions as `City, ST`. With a known state they are the closest names in that state. With no state, or a state that is not recognised, they are that city name in the states that have it, the most populous first by US Census population (`data/large_places.csv`, the 748 incorporated places of 50,000 or more), then by state code (`Dallas` → `Dallas, TX` first). If no state has that name, they are the close names among those large places only, the closest name first (`Dalas` → `Dallas, TX`); only the states that share one name are ordered by population.
 
 **Positions:**
 
@@ -176,7 +176,7 @@ The price is stored exactly as the CSV has it (up to 8 decimal places).
 
 - The server asks for it as it starts. `config/wsgi.py`, which only a server goes through, calls `warm_up()`: it loads the places table, the border outlines, the views and the station index, so the first request is as fast as any other (about 20 ms of our own work, against about 290 without it; *measured*). Start-up takes 2 to 3 seconds. `migrate`, `load_stations` and the tests do not go through that file.
 - Because `warm_up()` touches the database, the server must not be run with gunicorn's `--preload` option, which would open the connection before the worker process exists.
-- An empty table, or a database that cannot be read, is never remembered. If the server starts before the stations are loaded, or while the database is down, requests get a clear error (one warning is logged) until the stations can be read, and then work without a restart.
+- An empty table, or a database that cannot be read, is never remembered. If the server starts before the stations are loaded, or while the database is down, requests get a clear error (besides the line every error answer gets, one warning names the database error) until the stations can be read, and then work without a restart.
 - After reloading the stations, the server must be restarted to pick up the change.
 
 ## 7. Finding stations along the route
@@ -254,7 +254,7 @@ answer = best(start, 0)
 
 The fuel on arrival is only ever 0, or "a full tank minus the drive from the station where it was filled". So there is one case per (station, station where the tank was last filled), and each is worked out once. This is dynamic programming. It is written as a loop from the last station back to the first, not as a function that calls itself, so it never depends on the interpreter's recursion limit. With 98 candidate stations it takes 4 ms (*measured*).
 
-The plan is computed on the thinned list. If the thinned list has no plan but the full list does, it is computed on the full list. That is slow (180 to 350 ms on coast-to-coast roads, *measured*) and rare: none of the recorded roads triggers it, and it is the price of never reporting "no plan" wrongly.
+The plan is computed on the thinned list. If the thinned list has no plan but the full list does, it is computed on the full list. That is slow (150 to 350 ms on coast-to-coast roads, *measured*) and rare: none of the recorded roads triggers it, and it is the price of never reporting "no plan" wrongly.
 
 **When the stop cost is zero** the thinned list is not used at all. The plan is the greedy result described next, on every station, so the plan's bill and the lowest possible bill are the same figure (FR-16).
 
