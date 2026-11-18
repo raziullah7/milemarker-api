@@ -28,7 +28,7 @@ from stations.models import FuelStation
 from stations.places import Place
 from tests.conftest import METRES_PER_MILE, SMALL_CSV, load_road
 from tests.test_routing import ZERO_LENGTH_ANSWER, Fake, slow, timeout
-from tests.verify import Listing, verify_response
+from tests.verify import Listing, places_from, verify_response
 from trips import errors
 from trips.services import planner, routing
 from trips.services.routing import Route
@@ -229,7 +229,7 @@ def listed_prices() -> dict[str, Listing]:
 def assert_sound(body: dict, stop_cost: str | None = None) -> None:
     """The correctness rules (docs/test-cases.md, section 4) these cases lean on: R1 range,
     R2 tank, R3 gallons, R4 money, R6 stops, R7 lowest bill, R8 stop count, R15 meta.
-    Then the independent verifier (tests/verify.py) checks all sixteen, against the
+    Then the independent verifier (tests/verify.py) checks all seventeen, against the
     stations the test created. `stop_cost` is what the request sent, or None."""
     summary, stops, meta = body["summary"], body["fuel_stops"], body["meta"]
     distance = summary["distance_miles"]
@@ -275,7 +275,10 @@ def assert_sound(body: dict, stop_cost: str | None = None) -> None:
     assert meta["routing_calls"] > 0 or timings["routing"] == 0
     assert meta["routing_server"] in (SERVER_1, SERVER_2)
 
-    assert verify_response(body, listed_prices(), stop_cost) == []
+    # The stations are invented, all in Testville, TX, so each gives R17 its own place.
+    stations = FuelStation.objects.all()
+    places = places_from((s.city, s.state, s.lat, s.lng) for s in stations)
+    assert verify_response(body, listed_prices(), stop_cost, places=places) == []
 
 
 def plan(client, **params) -> dict:

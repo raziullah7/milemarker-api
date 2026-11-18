@@ -209,6 +209,7 @@ def resolve(text: str, field: str) -> Place:
         query=text,
     )
     cleaned = _TRAILING_COUNTRY.sub("", text.strip())
+    said_usa = cleaned != text.strip()
 
     if "," in cleaned:
         city_text, state_text = cleaned.rsplit(",", 1)
@@ -219,10 +220,12 @@ def resolve(text: str, field: str) -> Place:
     else:
         city_text, state = _split_trailing_state(cleaned)
         # With no comma, a country is the last word: "Tijuana Mexico". Only when no state
-        # matched, so "Santa Fe New Mexico", and "New Mexico" on its own, stay states.
+        # matched, so "Santa Fe New Mexico", and "New Mexico" on its own, stay states. And
+        # only when the caller did not end with USA: "Mexico, USA" is a US place called
+        # Mexico, and there are several.
         words = cleaned.casefold().split()
         ends_in_country = bool(words) and words[-1] in ("canada", "mexico")
-        if ends_in_country and state is None and _state_code(cleaned) is None:
+        if ends_in_country and not said_usa and state is None and _state_code(cleaned) is None:
             raise outside
 
     if state in OUTSIDE_STATES:

@@ -258,7 +258,7 @@ The plan is computed on the thinned list. If the thinned list has no plan but th
 
 ### The lowest possible bill
 
-For comparison (FR-15) the response also carries the lowest fuel bill possible if stops were free. With free stops the answer is the simple greedy rule: buy just enough to reach the next cheaper station, or fill up if there is none within range. It is run on every station along the road, not the thinned list, and takes under 1 ms (*measured*). Purchases smaller than 0.005 gallons are not counted as stops. Its bill is rounded exactly as the plan's is, stop by stop.
+For comparison (FR-15) the response also carries the lowest fuel bill possible if stops were free. With free stops the answer is the simple greedy rule: buy just enough to reach the next cheaper station, or fill up if there is none within range. It is run on every station along the road, not the thinned list, and takes under 1 ms (*measured*). Its stops are counted as the plan's are: a purchase shown as 0.00 gallons is not a stop, though its fuel is in the bill. Its bill is rounded exactly as the plan's is, stop by stop.
 
 The research figure of $854.65 above came from the thinned list. On every station the finished API may report a slightly lower one.
 
@@ -302,9 +302,9 @@ Both templates are settings, and each has its own test.
 | Dallas to Houston, full road | 0.8 s, 2,435 points; the second server returned the identical route |
 
 - **`overview=full` is required.** The default "simplified" road has 55 points for New York to Los Angeles and comes out 154 miles short, which would put every mile marker in the wrong place.
-- **When the second server is tried:** after a timeout, a connection error, a 5xx or 429 status, or an answer that cannot be read as a route. The deadline is 5 seconds per attempt, so a server that does not answer costs two calls (NFR-2) and about 10 seconds (NFR-12).
+- **When the second server is tried:** after a timeout, a connection error, or any answer that is not a readable route, except the two below. So a 5xx or 429, a redirect, a 204, 403, 404, 408, 410 or 451, and a 200 that cannot be read as a route all go to the second server: they concern the server that answered, not the request. The deadline is 5 seconds per attempt, so a server that does not answer costs two calls (NFR-2) and about 10 seconds (NFR-12).
 - **What the deadline bounds.** The HTTP library times connecting and waiting for the answer separately, and our own clock is checked as the answer is read. An attempt whose server is slow both to answer and to send can therefore run to about twice the deadline. The timeouts are not made shorter, because a coast-to-coast request takes up to about 3 seconds to start answering.
-- **When it is not:** if the server answers that no road exists between the points, that is the answer. Any other refusal of the request itself (a 4xx status) ends it with `routing_unavailable`. In both cases the second server would say the same.
+- **When it is not:** if the server answers that no road exists between the points (OSRM's `NoRoute` or `NoSegment`), that is the answer. Any other answer with status 400 means the request itself is wrong, and ends it with `routing_unavailable`. In both cases the second server would say the same.
 - **If both fail:** one error, `routing_unavailable`. Its reason is `timeout` only when every attempt timed out, and `error` otherwise.
 - **One shared HTTP client** (`httpx`) keeps the connection open between requests, so later calls skip the connection set-up.
 - **A User-Agent naming the app** is sent, because the second server's rules ask applications to identify themselves. It is a setting.
@@ -687,7 +687,7 @@ All of it comes from the environment (NFR-20). Every default makes a fresh clone
 | `DJANGO_DEBUG` | Off | Django's debug mode |
 | `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1,[::1]` | The host names the API answers to. Any other gets 400 `invalid_request` (D-21) |
 | `DJANGO_NUM_PROXIES` | `0`; the Compose file sets `1` | How many proxies in front of the API to trust when finding a client's address for the rate limit (D-17) |
-| `DATABASE_URL` | `postgresql://milemarker:milemarker@localhost:5432/milemarker`; the Compose file points it at `db` | The PostgreSQL connection (NFR-10) |
+| `DATABASE_URL` | `postgresql://milemarker:milemarker@127.0.0.1:5432/milemarker`; the Compose file points it at `db`. The address is `127.0.0.1`, not `localhost`: the database is published on `127.0.0.1` only, and a machine that tries IPv6 first for `localhost` waits seconds on every connection | The PostgreSQL connection (NFR-10) |
 | `REDIS_URL` | Unset: each process uses its own memory | The Redis that holds the caches and the rate-limit counters (D-15). The Compose file points it at `redis` |
 | `ROUTING_SERVERS` | The two public servers of section 9 | The routing servers: URL templates separated by commas, each containing `{coords}`, tried in order. The end-to-end run points it at the stand-in |
 | `WEB_CONCURRENCY` | 2 | The number of gunicorn worker processes (NFR-19) |

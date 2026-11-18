@@ -97,7 +97,7 @@ def plan_stops(
 
         # A tank is only filled to carry fuel past a dearer station, so a tank from
         # station k is only ever carried to u if u is dearer than k.
-        filled_ats = [None]
+        filled_ats: list[int | None] = [None]
         for k in range(u - 1, -1, -1):
             if miles[u] - miles[k] > RANGE_MILES:
                 break
@@ -149,11 +149,12 @@ def plan_stops(
             best[(u, filled_at)] = choice
 
     # Follow the choices from the start, where the truck arrives empty. find_gap() has
-    # passed, so the start always has a choice.
+    # passed, so the start always has a choice, and so does every entry a choice leads to.
     purchases = []
-    entry = (0, None)
+    entry: _Entry | None = (0, None)
     while entry is not None:
         choice = best[entry]
+        assert choice is not None, f"no way on from table entry {entry}, though a plan exists"
         purchases.append(Purchase(entry[0], choice.gallons))
         entry = choice.next_entry
     return purchases

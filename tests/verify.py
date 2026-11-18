@@ -1,9 +1,14 @@
 """An independent check of a 200 answer from GET /api/v1/route/.
 
-Written from the documents alone: rules R1 to R16 of docs/test-cases.md (section 4) and the
+Written from the documents alone: rules R1 to R17 of docs/test-cases.md (section 4) and the
 response contract in docs/backend-architecture.md (section 11). It imports only the standard
 library, never `config`, `stations` or `trips`, so a mistake shared by the planner and its own
 tests cannot also hide here. The endpoint tests and scripts/live_check.py both use it.
+
+It checks that a plan is consistent and possible, not that it is the cheapest: its figures
+agree with each other, with the CSV and with the road, and the truck can drive it. That no
+plan is cheaper is checked by the exactness tests EX-01 to EX-04 (tests/test_fuel.py),
+against two exact methods that share no code with the planner.
 
 Money, gallons and prices are compared as exact decimals. The rules promise exact sums ("add
 up exactly", "equals the sum"), and binary floating point cannot even hold 0.01. Read the JSON
@@ -13,8 +18,10 @@ the server wrote.
 """
 
 import csv
+import functools
 import math
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from itertools import pairwise
@@ -30,6 +37,10 @@ DEFAULT_STOP_COST = Decimal(10)
 CENT = Decimal("0.01")
 FIRST_FILL_WARNING_MILES = 25  # R10, FR-14
 LINE_GAP_MILES = 0.51  # R13: half-mile points, plus a little for coordinates cut to 5 decimals
+# R12: a marker is shown to 0.1 mile, so it can be 0.05 from its point's exact mile. The rest
+# is room for the straight line between the last two points, measured from coordinates cut
+# to 5 decimals.
+MARKER_ON_LINE_MILES = 0.1
 SERVERS = frozenset({"router.project-osrm.org", "routing.openstreetmap.de"})
 # fmt: off
 LOWER_48_AND_DC = frozenset({
@@ -40,6 +51,27 @@ LOWER_48_AND_DC = frozenset({
 })
 # fmt: on
 LABEL = re.compile(r"[^,]+, ([A-Z]{2})")  # R16: "City, ST"
+
+# R17: a station sits at its city's place: the average of the city's rows, which are at most
+# 10 miles apart, or for the few cities spread wider one of the rows (D-5, architecture
+# section 6). A stop is within the search radius of its station. So a stop is within this
+# many miles of some row of its city.
+NEAR_PLACE_MILES = SEARCH_RADIUS_MILES + 10
+CITIES_CSV = Path(__file__).resolve().parent.parent / "data" / "us_cities.csv"
+# The five places the architecture (section 6) adds by hand, because data/us_cities.csv lacks
+# them: (city, state, lat, lng). A copy of the values in stations/places.py, not an import.
+HAND_ADDED_PLACES = (
+    ("Port Wentworth", "GA", 32.1491, -81.1632),
+    ("Henrico", "VA", 37.5131, -77.3465),
+    ("Evergreen", "AL", 31.4335, -86.9569),
+    ("Elizabethport", "NJ", 40.6501, -74.1871),
+    ("University Park", "IL", 41.4400, -87.6834),
+)
+# A city's key (architecture section 6): capitals, these short forms written out, letters only.
+CITY_SHORT_FORMS = {"ST": "SAINT", "STE": "SAINTE", "FT": "FORT", "MT": "MOUNT"}
+
+# (state code, city key) to the (lat, lng) of every place of that city, for R17.
+Places = dict[tuple[str, str], list[tuple[float, float]]]
 
 # GE-01 fixes one degree of longitude on the equator at 69.094 miles, which is a sphere of
 # this radius. R13 only needs it to tell 0.5 miles from 1.0, so the exact figure hardly matters.
@@ -85,16 +117,58 @@ def load_prices(csv_path: str | Path) -> dict[str, Listing]:
     return prices
 
 
-def verify_response(body: dict, prices: dict[str, Listing], stop_cost=None) -> list[str]:
+def places_from(rows: Iterable[tuple[str, str, float, float]]) -> Places:
+    """(city, state, lat, lng) rows as the places R17 checks against. A caller whose
+    stations are invented gives these, one row for each place its stations stand at."""
+    places: Places = {}
+    for city, state, lat, lng in rows:
+        places.setdefault((state, _city_key(city)), []).append((float(lat), float(lng)))
+    return places
+
+
+@functools.cache
+def default_places() -> Places:
+    """R17's places when the caller gives none: every row of data/us_cities.csv, and the
+    five places added by hand. Read once."""
+    with open(CITIES_CSV, newline="", encoding="utf-8-sig") as f:
+        rows = [
+            (row["CITY"], row["STATE_CODE"], row["LATITUDE"], row["LONGITUDE"])
+            for row in csv.DictReader(f)
+        ]
+    return places_from([*rows, *HAND_ADDED_PLACES])
+
+
+@dataclass(frozen=True)
+class _Given:
+    """What the caller gave beside the body, for the rules that need it."""
+
+    prices: dict[str, Listing]
+    stop_cost: object
+    places: Places | None  # None: default_places()
+    routing_hosts: frozenset[str]
+
+
+def verify_response(
+    body: dict,
+    prices: dict[str, Listing],
+    stop_cost=None,
+    *,
+    places: Places | None = None,
+    routing_hosts: Iterable[str] = (),
+) -> list[str]:
     """One line per broken rule, each starting with its ID ("R4: ..."); [] when all hold.
 
-    `stop_cost` is what the request sent (text or number), or None if it sent none. Every
-    rule is checked every time, so one broken rule never hides another.
+    `stop_cost` is what the request sent (text or number), or None if it sent none.
+    `places` is what R17 checks station stops against, as places_from() makes it; None
+    means default_places(). `routing_hosts` names routing servers R15 accepts beside the
+    two public ones, such as the stand-in `fake-osrm` of the end-to-end run. Every rule is
+    checked every time, so one broken rule never hides another.
     """
+    given = _Given(prices, stop_cost, places, frozenset(routing_hosts))
     lines = []
     for rule, check in RULES:
         try:
-            problems = check(body, prices, stop_cost)
+            problems = check(body, given)
         except Exception as exc:
             # A body too malformed for a rule to read breaks that rule. Saying so, rather than
             # raising, keeps the remaining rules running.
@@ -139,6 +213,16 @@ def _join(problems: list[str]) -> str:
     return f"{shown}; and {hidden} more" if hidden > 0 else shown
 
 
+def _city_key(city: str) -> str:
+    """A city's name as the places table matches it (architecture section 6): capitals, St,
+    Ste, Ft and Mt (with or without a dot) written out, then letters only. So "St. Louis"
+    and "Saint Louis" are one city, as are "Winston-Salem" and "Winston Salem"."""
+    written_out = re.sub(
+        r"\b(ST|STE|FT|MT)\b\.?", lambda m: CITY_SHORT_FORMS[m.group(1)], city.upper()
+    )
+    return re.sub(r"[^A-Z]", "", written_out)
+
+
 def _miles_between(a, b) -> float:
     """Great-circle miles between two [lng, lat] pairs (haversine)."""
     lng1, lat1, lng2, lat2 = (math.radians(float(x)) for x in (*a, *b))
@@ -152,7 +236,7 @@ def _miles_between(a, b) -> float:
 # --- The rules: each returns the problems it found, [] when it holds ----------------------
 
 
-def _r1_range(body, prices, stop_cost):
+def _r1_range(body, given):
     distance = _dec(body["summary"]["distance_miles"])
     marks = [_dec(stop["mile_marker"]) for stop in body["fuel_stops"]]
     problems = []
@@ -163,7 +247,7 @@ def _r1_range(body, prices, stop_cost):
     return problems
 
 
-def _r2_tank(body, prices, stop_cost):
+def _r2_tank(body, given):
     # Walk the trip from mile 0 with an empty tank (D-1), burning a gallon per 10 miles.
     # The gallons are rounded as a running total, so the walk is exact: no allowance.
     problems = []
@@ -183,7 +267,7 @@ def _r2_tank(body, prices, stop_cost):
     return problems
 
 
-def _r3_gallons(body, prices, stop_cost):
+def _r3_gallons(body, given):
     summary = body["summary"]
     bought = sum(_dec(stop["gallons"]) for stop in body["fuel_stops"])
     gallons, distance = _dec(summary["gallons"]), _dec(summary["distance_miles"])
@@ -195,7 +279,7 @@ def _r3_gallons(body, prices, stop_cost):
     return problems
 
 
-def _r4_money(body, prices, stop_cost):
+def _r4_money(body, given):
     problems = []
     costs = []
     for n, stop in enumerate(body["fuel_stops"], 1):
@@ -210,10 +294,10 @@ def _r4_money(body, prices, stop_cost):
     return problems
 
 
-def _r5_prices_and_names(body, prices, stop_cost):
+def _r5_prices_and_names(body, given):
     problems = []
     for n, stop in enumerate(body["fuel_stops"], 1):
-        listing = prices.get(str(stop["station_id"]))
+        listing = given.prices.get(str(stop["station_id"]))
         if listing is None:
             problems.append(f"stop {n}: station {stop['station_id']!r} is not in the CSV")
             continue
@@ -228,7 +312,7 @@ def _r5_prices_and_names(body, prices, stop_cost):
     return problems
 
 
-def _r6_stops(body, prices, stop_cost):
+def _r6_stops(body, given):
     stops, start = body["fuel_stops"], body["summary"]["start"]
     if not stops:
         return ["no fuel_stops"]
@@ -260,10 +344,18 @@ def _r6_stops(body, prices, stop_cost):
     repeated = sorted({str(i) for i in ids if ids.count(i) > 1})
     if repeated:
         problems.append(f"station_id repeated: {', '.join(repeated)}")
+    # A purchase that rounds to 0.00 gallons is not shown as a stop (architecture section 8),
+    # except the fill-up at the start, which is always shown.
+    gallons = [_dec(stop["gallons"]) for stop in stops]
+    if gallons[0] < 0:
+        problems.append(f"stop 1 buys {gallons[0]} gallons, less than 0")
+    for n, amount in enumerate(gallons[1:], 2):
+        if not amount > 0:
+            problems.append(f"stop {n} buys {amount} gallons, not more than 0")
     return problems
 
 
-def _r7_lowest_bill(body, prices, stop_cost):
+def _r7_lowest_bill(body, given):
     summary = body["summary"]
     total = _dec(summary["total_fuel_cost"])
     lowest = _dec(summary["lowest_possible_fuel_cost"])
@@ -277,7 +369,7 @@ def _r7_lowest_bill(body, prices, stop_cost):
     return problems
 
 
-def _r8_stop_count(body, prices, stop_cost):
+def _r8_stop_count(body, given):
     stops = _dec(body["summary"]["stops"])
     listed = len(body["fuel_stops"])
     distance = _dec(body["summary"]["distance_miles"])
@@ -290,7 +382,8 @@ def _r8_stop_count(body, prices, stop_cost):
     return problems
 
 
-def _r9_assumptions(body, prices, stop_cost):
+def _r9_assumptions(body, given):
+    stop_cost = given.stop_cost
     sent = DEFAULT_STOP_COST if stop_cost is None else Decimal(str(stop_cost).strip())
     expected = {
         "range_miles": RANGE_MILES,
@@ -310,7 +403,7 @@ def _r9_assumptions(body, prices, stop_cost):
     return problems
 
 
-def _r10_first_fill(body, prices, stop_cost):
+def _r10_first_fill(body, given):
     distance = _dec(body["summary"]["first_fill_distance_miles"])
     warnings = body["warnings"]
     problems = []
@@ -331,7 +424,7 @@ def _r10_first_fill(body, prices, stop_cost):
     return problems
 
 
-def _r11_map(body, prices, stop_cost):
+def _r11_map(body, given):
     summary, stops, geo = body["summary"], body["fuel_stops"], body["map"]
     problems = []
     if geo.get("type") != "FeatureCollection":
@@ -391,11 +484,19 @@ def _r11_map(body, prices, stop_cost):
     return problems
 
 
-def _r12_stops_on_line(body, prices, stop_cost):
+def _r12_stops_on_line(body, given):
     line = body["map"]["features"][0]["geometry"]["coordinates"]
     positions: dict[tuple, list[int]] = {}
     for i, (lng, lat) in enumerate(line):
         positions.setdefault((_dec(lng), _dec(lat)), []).append(i)
+    # The line has a point every half mile of its own length, plus its end point, and its
+    # markers are scaled so the end is distance_miles (architecture section 5). Its own
+    # length is the half miles before the last point plus the last stretch along the road.
+    # That stretch is at most half a mile and at least the straight line between the last
+    # two points: less when the road bends there, by over 0.2 miles on a recorded road.
+    distance = float(_dec(body["summary"]["distance_miles"]))
+    shortest = 0.5 * (len(line) - 2) + _miles_between(line[-2], line[-1])
+    longest = 0.5 * (len(line) - 1)
     problems = []
     previous = -1
     for stop in body["fuel_stops"]:
@@ -412,15 +513,17 @@ def _r12_stops_on_line(body, prices, stop_cost):
             problems.append(f"stop {order} is at line position {found[0]}, not after {previous}")
             continue
         previous = later[0]
-        mile, expected = _dec(stop["mile_marker"]), Decimal(previous) / 2
-        if abs(mile - expected) > expected * Decimal("0.005") + Decimal("0.05"):
+        mile = float(_dec(stop["mile_marker"]))
+        low, high = (0.5 * previous * distance / length for length in (longest, shortest))
+        if not low - MARKER_ON_LINE_MILES <= mile <= high + MARKER_ON_LINE_MILES:
             problems.append(
-                f"stop {order} at mile {mile}, but line position {previous} is mile {expected}"
+                f"stop {order} at mile {mile}, but line position {previous} is mile "
+                f"{low:.2f} to {high:.2f}"
             )
     return problems
 
 
-def _r13_line_spacing(body, prices, stop_cost):
+def _r13_line_spacing(body, given):
     line = body["map"]["features"][0]["geometry"]["coordinates"]
     distance = _dec(body["summary"]["distance_miles"])
     problems = []
@@ -445,7 +548,7 @@ def _r13_line_spacing(body, prices, stop_cost):
     return problems
 
 
-def _r14_precision(body, prices, stop_cost):
+def _r14_precision(body, given):
     summary, assumptions = body["summary"], body["assumptions"]
     figures = []  # (where, value, most decimals allowed, or None for any)
     for place in ("start", "finish"):
@@ -504,7 +607,7 @@ def _r14_precision(body, prices, stop_cost):
     return problems
 
 
-def _r15_meta(body, prices, stop_cost):
+def _r15_meta(body, given):
     meta = body["meta"]
     calls, hit, timings = meta["routing_calls"], meta["cache_hit"], meta["timings_ms"]
     problems = []
@@ -520,12 +623,12 @@ def _r15_meta(body, prices, stop_cost):
             problems.append(f"timings_ms.{key} is {value!r}")
     if calls == 0 and timings.get("routing") != 0:
         problems.append(f"no routing call, yet timings_ms.routing is {timings.get('routing')!r}")
-    if meta["routing_server"] not in SERVERS:
+    if meta["routing_server"] not in SERVERS | given.routing_hosts:
         problems.append(f"routing_server is {meta['routing_server']!r}")
     return problems
 
 
-def _r16_labels(body, prices, stop_cost):
+def _r16_labels(body, given):
     problems = []
     for place in ("start", "finish"):
         label = body["summary"][place]["label"]
@@ -533,6 +636,29 @@ def _r16_labels(body, prices, stop_cost):
         if not match or match.group(1) not in LOWER_48_AND_DC:
             problems.append(
                 f"summary.{place}.label {label!r} is not 'City, ST' in the lower 48 or DC"
+            )
+    return problems
+
+
+def _r17_stations_near_their_places(body, given):
+    # R12 puts a stop on the line; this puts its station near that point. Without it a
+    # plan could buy at a station hundreds of miles from the road and draw it on the line.
+    places = default_places() if given.places is None else given.places
+    problems = []
+    for stop in body["fuel_stops"]:
+        if stop["kind"] != "station":
+            continue
+        where = f"stop {stop['order']} ({stop['city']}, {stop['state']})"
+        spots = places.get((stop["state"], _city_key(stop["city"])))
+        if not spots:
+            problems.append(f"{where}: no such place in the places data")
+            continue
+        point = (stop["lng"], stop["lat"])
+        nearest = min(_miles_between(point, (lng, lat)) for lat, lng in spots)
+        if nearest > NEAR_PLACE_MILES:
+            problems.append(
+                f"{where} is {nearest:.1f} miles from the nearest place of that name, "
+                f"more than {NEAR_PLACE_MILES}"
             )
     return problems
 
@@ -554,4 +680,5 @@ RULES = (
     ("R14", _r14_precision),
     ("R15", _r15_meta),
     ("R16", _r16_labels),
+    ("R17", _r17_stations_near_their_places),
 )

@@ -1,5 +1,7 @@
-"""Tests for the routing client (RT-01 to RT-14). Every one uses httpx.MockTransport."""
+"""Tests for the routing client (RT-01 to RT-14, and QB-04 to QB-06 and QB-16 of
+docs/test-cases.md, section 9.13). Every request goes to httpx.MockTransport."""
 
+import threading
 import time
 
 import httpx
@@ -213,6 +215,41 @@ def test_rt12_shared_client_sends_user_agent(monkeypatch):
     shared.close()
 
 
+def test_qb16_two_first_requests_share_one_client(monkeypatch):
+    """Review 9-Q0b, note N8. Two requests that both find no shared client yet must not
+    each make one: the one made in vain would never be closed. Making a client is slowed
+    here, so without a lock both threads would be making one at the same time."""
+    from trips.services import routing
+
+    made = []
+    real_client = httpx.Client
+
+    def slow_client(**options):
+        time.sleep(0.2)
+        made.append(real_client(**options))
+        return made[-1]
+
+    monkeypatch.setattr(routing, "_shared_client", None)
+    monkeypatch.setattr(httpx, "Client", slow_client)
+    start_together = threading.Barrier(2)
+    got = []
+
+    def first_request():
+        start_together.wait()
+        got.append(routing._get_shared_client())
+
+    threads = [threading.Thread(target=first_request) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    for client in made:
+        client.close()
+
+    assert len(made) == 1
+    assert got == [made[0], made[0]]
+
+
 def test_rt13_server_template_setting(settings):
     settings.ROUTING_SERVERS = [
         "https://example.test/route/{coords}?overview=full&geometries=geojson",
@@ -235,14 +272,39 @@ def test_rt14_reason_is_timeout_only_if_every_attempt_timed_out():
 
 
 def test_any_other_refusal_ends_the_request_at_once():
-    """Review 5Q2, finding 5. A 4xx status other than 429 refuses the request itself, and
-    the second server would refuse it too (architecture section 9), so it is not asked."""
+    """Review 5Q2, finding 5, and QB-06. A 400 that is not "no road" means the request
+    itself is wrong, and the second server would refuse it too (architecture section 9),
+    so it is not asked."""
     invalid = {"code": "InvalidQuery", "message": "Query string malformed close to position 9"}
     fake = Fake(httpx.Response(400, json=invalid), None)
     with pytest.raises(RoutingUnavailable) as caught:
         fake.fetch()
     assert caught.value.details["reason"] == "error"
     assert len(fake.requests) == 1
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        httpx.Response(302, headers={"Location": "https://router.project-osrm.org/elsewhere"}),
+        httpx.Response(403),
+        httpx.Response(404),
+    ],
+    ids=["302", "403", "404"],
+)
+def test_qb04_an_answer_about_one_server_tries_the_other(answer):
+    """Review 9-Q0b, finding Q0b-3. A redirect, a refusal of this client, or a path that is
+    not there concerns the server that answered, not the request. The second server is
+    there for exactly that."""
+    route = Fake(answer, ok()).fetch()
+    assert route.server == SERVER_2
+    assert route.calls == 2
+
+
+@pytest.mark.parametrize("status", [204, 301, 307, 408, 410, 451])
+def test_qb05_any_other_answer_that_is_not_a_route_tries_the_other(status):
+    route = Fake(httpx.Response(status), ok()).fetch()
+    assert route.calls == 2
 
 
 def test_a_road_of_length_zero_is_a_route():

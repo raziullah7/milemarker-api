@@ -17,9 +17,6 @@ from trips.services.geo import RoadPoints
 # A first fill-up station further from the start than this earns a warning.
 FAR_FIRST_FILL_MILES = 25.0
 
-# A purchase smaller than this is not counted as a stop in the lowest-possible figures.
-SMALLEST_COUNTED_GALLONS = 0.005
-
 # Map marker colours, in the "marker-color" property geojson.io reads.
 STOP_COLOUR = "#d9480f"
 START_COLOUR = "#2b8a3e"
@@ -85,10 +82,12 @@ def build_answer(
     ]
     total_cost = sum(cost for _, _, cost in kept)
 
-    _, lowest_costs = _bill(cheapest, total_gallons)
+    lowest_gallons, lowest_costs = _bill(cheapest, total_gallons)
     lowest_cost = sum(lowest_costs)
-    # Tiny purchases still count in the bill above; they are just not worth calling a stop.
-    lowest_stops = max(1, sum(amount >= SMALLEST_COUNTED_GALLONS for _, amount in cheapest))
+    # Stops are counted as the plan's are: a purchase shown as 0.00 gallons is no stop, though
+    # its fuel is in the bill above. So at stop cost 0, where the plan is the free-stops
+    # plan, the two counts are equal.
+    lowest_stops = max(1, sum(amount > 0 for amount in lowest_gallons))
     # Each bill is rounded stop by stop, so when the two plans' exact bills are within a
     # cent or two, the free-stops bill can come out above the plan's. The plan's own bill
     # can be bought, so the lowest possible is never more than it: show the plan's figures.

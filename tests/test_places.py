@@ -330,6 +330,26 @@ def test_pl21_error_carries_the_field_and_query():
     assert caught.value.details["query"] == "Chicgo, IL"
 
 
+def test_qb12_a_place_called_mexico_in_the_usa_is_not_the_country():
+    """Review 9-Q0b, note N5. With a trailing USA the caller has said the place is in the
+    United States, and several US places are called Mexico."""
+    with pytest.raises(UnknownPlace) as caught:
+        resolve("Mexico, USA", "start")
+    assert sorted(caught.value.details["suggestions"]) == [
+        "Mexico, IN",
+        "Mexico, ME",
+        "Mexico, MO",
+        "Mexico, NY",
+        "Mexico, PA",
+    ]
+
+
+@pytest.mark.parametrize("text", ["Mexico", "Tijuana Mexico"])
+def test_qb12_the_country_without_a_comma_is_still_outside_coverage(text):
+    with pytest.raises(OutsideCoverage):
+        resolve(text, "start")
+
+
 @pytest.mark.parametrize("text", ["Texas", "New Mexico"])
 def test_a_state_name_on_its_own_is_unknown(text):
     # "New Mexico" ends in "Mexico", but it is a state, not the country.

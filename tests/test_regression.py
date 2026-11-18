@@ -49,3 +49,31 @@ def test_pinned_figures(trip, use_real_stations, monkeypatch):
     resolve(trip[0], "start")
     resolve(trip[1], "finish")
     assert figures(*trip, monkeypatch) == PINNED[trip]
+
+
+# New York to Los Angeles at stop cost 10, stop by stop: (station_id, mile_marker, gallons,
+# cost), as release 1.0 gives them (QB-15). The summary pins cannot see every change: stops
+# 6 and 7 share a price, so 0.01 gallons moved from one to the other leaves the total as it
+# is, but not these.
+NEW_YORK_STOPS = [
+    (72087, 0.0, 39.21, 127.0),
+    (72445, 392.1, 46.17, 141.23),
+    (70744, 853.8, 49.98, 148.39),
+    (52548, 1353.6, 50.0, 144.95),
+    (73101, 1739.7, 38.61, 121.58),
+    (71712, 2120.8, 25.92, 85.08),
+    (72965, 2498.9, 30.18, 99.06),
+]
+
+
+def test_pinned_stops_new_york_to_los_angeles(use_real_stations, monkeypatch):
+    coords, distance_miles = load_road("nyc_la")
+    monkeypatch.setattr(
+        routing,
+        "fetch_route",
+        lambda a, b: Route(coords, distance_miles, "router.project-osrm.org", 1),
+    )
+    stops = planner.plan_trip("New York, NY", "Los Angeles, CA", Decimal("10"))["fuel_stops"]
+
+    shown = [(s["station_id"], s["mile_marker"], s["gallons"], s["cost"]) for s in stops]
+    assert shown == NEW_YORK_STOPS

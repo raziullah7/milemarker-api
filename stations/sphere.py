@@ -12,11 +12,14 @@ Every function takes degrees, latitude first, and accepts floats or numpy arrays
 """
 
 import numpy as np
+from numpy.typing import ArrayLike, NDArray
 
 EARTH_RADIUS_MILES = 3958.8
 
 
-def haversine_miles(lat1, lng1, lat2, lng2):
+def haversine_miles(
+    lat1: ArrayLike, lng1: ArrayLike, lat2: ArrayLike, lng2: ArrayLike
+) -> NDArray[np.float64]:
     """Distance over the ground in miles between (lat1, lng1) and (lat2, lng2).
 
     Broadcasts like numpy: arrays of points in, an array of distances out.
@@ -30,19 +33,19 @@ def haversine_miles(lat1, lng1, lat2, lng2):
     return 2 * EARTH_RADIUS_MILES * np.arcsin(np.sqrt(np.clip(half, 0.0, 1.0)))
 
 
-def to_xyz(lat, lng) -> np.ndarray:
+def to_xyz(lat: ArrayLike, lng: ArrayLike) -> np.ndarray:
     """Points on the unit sphere, as an array of shape (n, 3). A single point gives shape (1, 3)."""
     lat = np.radians(np.atleast_1d(np.asarray(lat, dtype=float)))
     lng = np.radians(np.atleast_1d(np.asarray(lng, dtype=float)))
     return np.column_stack([np.cos(lat) * np.cos(lng), np.cos(lat) * np.sin(lng), np.sin(lat)])
 
 
-def chord(miles):
+def chord(miles: ArrayLike) -> NDArray[np.float64]:
     """Straight-line distance on the unit sphere that corresponds to `miles` over the ground."""
     return 2 * np.sin(np.asarray(miles, dtype=float) / (2 * EARTH_RADIUS_MILES))
 
 
-def arc(chord_length):
+def arc(chord_length: ArrayLike) -> NDArray[np.float64]:
     """The reverse of chord(): miles over the ground for a straight line on the unit sphere."""
     half = np.clip(np.asarray(chord_length, dtype=float) / 2, 0.0, 1.0)
     return 2 * EARTH_RADIUS_MILES * np.arcsin(half)

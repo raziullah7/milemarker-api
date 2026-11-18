@@ -7,6 +7,7 @@ document, section 9.
 """
 
 import json
+import threading
 import time
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -45,15 +46,16 @@ def fetch_route(
     """The driving road from `start` to `finish`, each a (lat, lng) pair.
 
     Tries each server in ROUTING_SERVERS in order, at most one request each. The next
-    server is tried only after a timeout, a connection error, a 5xx or 429 status, or a
-    200 that cannot be read as a route. Each attempt is timed by the HTTP library while
+    server is tried after a timeout, a connection error, or any answer that is not a
+    readable route, except the two below. Each attempt is timed by the HTTP library while
     connecting and waiting for the answer, and by ROUTING_DEADLINE_SECONDS, from sending
     the request, while the answer is read (see _attempt).
 
     Raises NoRoute, with no further attempt, if a server answers that no road joins the
     points. Raises RoutingUnavailable, with no further attempt and reason "error", if a
-    server refuses the request with any other status. Raises RoutingUnavailable if every
-    server failed: reason "timeout" when every attempt timed out, "error" otherwise.
+    server answers any other status 400: the request itself is wrong. Raises
+    RoutingUnavailable if every server failed: reason "timeout" when every attempt timed
+    out, "error" otherwise.
 
     `client` is for tests, which pass one built on a fake transport. Without it a shared
     client is used, so connections are reused between requests.
@@ -90,14 +92,18 @@ class _AttemptFailed(Exception):
 
 
 _shared_client: httpx.Client | None = None
+# The server answers requests on several threads. Without the lock, two first requests at
+# once could each make a client, and the one replaced would never be closed.
+_shared_client_lock = threading.Lock()
 
 
 def _get_shared_client() -> httpx.Client:
     """The one client used when the caller passes none, created on first use."""
     global _shared_client
-    if _shared_client is None:
-        _shared_client = httpx.Client(headers={"User-Agent": settings.ROUTING_USER_AGENT})
-    return _shared_client
+    with _shared_client_lock:
+        if _shared_client is None:
+            _shared_client = httpx.Client(headers={"User-Agent": settings.ROUTING_USER_AGENT})
+        return _shared_client
 
 
 def _number(value: float) -> str:
@@ -135,12 +141,13 @@ def _attempt(client: httpx.Client, url: str) -> tuple[np.ndarray, float]:
     # whatever the status, short of a server error.
     if status < 500 and _osrm_code(body) in ("NoRoute", "NoSegment"):
         raise NoRoute("No road joins the start and the finish.")
-    if status >= 500 or status == 429:
-        # The server's own trouble: the other server may answer.
-        raise _AttemptFailed(timed_out=False)
-    if status != 200:
-        # A refusal of the request itself, which the other server would refuse too.
+    if status == 400:
+        # OSRM's answer to a request it cannot read, which the other server would refuse too.
         raise RoutingUnavailable("The routing service refused the request.", reason="error")
+    if status != 200:
+        # Anything else concerns this server, not the request: its own trouble (5xx, 429),
+        # a redirect, a path that moved, a block on this client. The other server may answer.
+        raise _AttemptFailed(timed_out=False)
     return _read_route(body)
 
 

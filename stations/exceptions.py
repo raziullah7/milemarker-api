@@ -15,7 +15,7 @@ class MileMarkerError(Exception):
 
     code = "error"
 
-    def __init__(self, message: str, **details):
+    def __init__(self, message: str, **details: object):
         super().__init__(message)
         self.message = message
         self.details = details

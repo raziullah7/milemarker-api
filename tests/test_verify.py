@@ -1,4 +1,6 @@
-"""The verifier itself: cases VF-01 to VF-19 of docs/test-cases.md, section 2.11.
+"""The verifier itself: cases VF-01 to VF-19 of docs/test-cases.md, section 2.11, the
+verifier's cases of section 9.13 (QB-01 to QB-03, QB-08 to QB-10) and its options, VR-01,
+VR-03 and VR-04 of section 9.14.
 
 Correct answers come from the real endpoint, through Django's test client, with the real
 stations in memory and the routing call replaced by a recorded road. VF-02 to VF-18 then each
@@ -16,15 +18,21 @@ import ast
 import copy
 import json
 import sys
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from stations.index import reset_index
+from stations.models import FuelStation
+from stations.places import HAND_ADDED_PLACES
 from tests.conftest import load_road
-from tests.verify import Listing, load_prices, verify_response
+from tests.test_api import DALLAS, add_station, listed_prices, on_road, straight_road
+from tests.verify import Listing, load_prices, places_from, verify_response
 from trips.services import routing
+from trips.services.corridor import stations_along
+from trips.services.geo import resample
 from trips.services.routing import Route
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -66,10 +74,42 @@ def good(ask) -> dict:
     return ask("nyc_la", "New York, NY", "Los Angeles, CA")
 
 
-def rules(body: dict, prices: dict, stop_cost=None) -> tuple[set[str], list[str]]:
+def rules(body: dict, prices: dict, stop_cost=None, **options) -> tuple[set[str], list[str]]:
     """The IDs of the rules reported, and the lines themselves for the failure message."""
-    lines = verify_response(body, prices, stop_cost)
+    lines = verify_response(body, prices, stop_cost, **options)
     return {line.split(":", 1)[0] for line in lines}, lines
+
+
+def agree(body: dict) -> dict:
+    """Make what follows from fuel_stops agree with it again, after a test has changed it:
+    the orders, each cost, the total, the stop count, the lowest bill (never above the
+    total) and the map's stop Points. A wrong answer built with it is then wrong only in
+    what the test changed."""
+    summary, stops = body["summary"], body["fuel_stops"]
+    for order, stop in enumerate(stops, 1):
+        stop["order"] = order
+        exact = stop["gallons"] * stop["price_per_gallon"]
+        stop["cost"] = exact.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    summary["total_fuel_cost"] = sum(stop["cost"] for stop in stops)
+    summary["stops"] = len(stops)
+    summary["lowest_possible_fuel_cost"] = min(
+        summary["lowest_possible_fuel_cost"], summary["total_fuel_cost"]
+    )
+
+    features = body["map"]["features"]
+    route, template, start, finish = features[0], features[1], features[-2], features[-1]
+    points = []
+    for stop in stops:
+        point = copy.deepcopy(template)
+        for key in ("order", "name", "mile_marker", "price_per_gallon", "gallons", "cost"):
+            point["properties"][key] = stop[key]
+        point["properties"]["title"] = (
+            f"{stop['order']}. {stop['name']}, {stop['city']} {stop['state']}"
+        )
+        point["geometry"]["coordinates"] = [stop["lng"], stop["lat"]]
+        points.append(point)
+    body["map"]["features"] = [route, *points, start, finish]
+    return body
 
 
 # --- VF-01 -------------------------------------------------------------------------------
@@ -89,6 +129,41 @@ def rules(body: dict, prices: dict, stop_cost=None) -> tuple[set[str], list[str]
 )
 def test_vf01_real_trips_obey_every_rule(ask, prices, road, start, finish, stop_cost):
     body = ask(road, start, finish, stop_cost)
+
+    assert verify_response(body, prices, stop_cost) == []
+
+
+# The recorded roads that stay in the USA and have a fuel plan: GE-16's fifteen and three of
+# the four added in Phase 10. The other three recordings give no 200: Detroit to Buffalo
+# and to Boston run through Ontario, and Los Angeles to Seattle has no fuel plan.
+ROADS_WITH_A_PLAN = {
+    "bos_dc": ("Boston, MA", "Washington, DC"),
+    "bos_sea": ("Boston, MA", "Seattle, WA"),
+    "chi_hou": ("Chicago, IL", "Houston, TX"),
+    "dal_hou": ("Dallas, TX", "Houston, TX"),
+    "det_porthuron": ("Detroit, MI", "Port Huron, MI"),
+    "elpaso_delrio": ("El Paso, TX", "Del Rio, TX"),
+    "houlton_madawaska": ("Houlton, ME", "Madawaska, ME"),
+    "intlfalls_baudette": ("International Falls, MN", "Baudette, MN"),
+    "keywest_miami": ("Key West, FL", "Miami, FL"),
+    "laredo_brownsville": ("Laredo, TX", "Brownsville, TX"),
+    "montauk_nyc": ("Montauk, NY", "New York, NY"),
+    "nyc_la": ("New York, NY", "Los Angeles, CA"),
+    "sandiego_calexico": ("San Diego, CA", "Calexico, CA"),
+    "sea_mia": ("Seattle, WA", "Miami, FL"),
+    "sea_blaine": ("Seattle, WA", "Blaine, WA"),
+    "la_nyc": ("Los Angeles, CA", "New York, NY"),
+    "stl_winstonsalem": ("St. Louis, MO", "Winston-Salem, NC"),
+    "dal_phx": ("Dallas, TX", "Phoenix, AZ"),
+}
+
+
+@pytest.mark.parametrize("stop_cost", ["0", "10", "25"])
+@pytest.mark.parametrize("road", list(ROADS_WITH_A_PLAN))
+def test_qb02_every_recorded_road_obeys_every_rule(ask, prices, road, stop_cost):
+    """QB-02: the rules added after the second audit (R17, and the new R6 and R12) hold on
+    every real answer the recordings give."""
+    body = ask(road, *ROADS_WITH_A_PLAN[road], stop_cost)
 
     assert verify_response(body, prices, stop_cost) == []
 
@@ -297,6 +372,192 @@ def test_vf18_a_start_outside_the_lower_48(good, prices):
 
     found, lines = rules(bad, prices)
     assert "R16" in found, lines
+
+
+# --- QB-01 to QB-03, QB-08 to QB-10: the second audit's findings on the verifier ------------
+
+
+def test_qb01_a_station_far_from_the_road(good, prices):
+    """Review 9-Q0b, finding Q0b-1. Stop 3 is given the cheapest station in the CSV, 742
+    miles away, while keeping its point on the line. Every figure is made to agree, and
+    its bill is below the lowest possible, so only R17 can see it."""
+    bad = copy.deepcopy(good)
+    stop = bad["fuel_stops"][2]
+    assert (stop["city"], stop["state"], stop["price_per_gallon"]) == (
+        "Utica",
+        "IL",
+        Decimal("2.969"),
+    )
+    far = prices["66341"]
+    assert (far.city, far.state, far.price) == ("Harrold", "TX", Decimal("2.68733333"))
+    stop["station_id"] = 66341
+    for key in ("name", "address", "city", "state"):
+        stop[key] = getattr(far, key)
+    stop["price_per_gallon"] = far.price
+    agree(bad)
+    assert bad["summary"]["total_fuel_cost"] < good["summary"]["lowest_possible_fuel_cost"]
+
+    found, lines = rules(bad, prices)
+    assert found == {"R17"}, lines
+
+
+def test_qb03_a_stop_drawn_further_along_than_its_marker(good, prices):
+    """Review 9-Q0b, finding Q0b-2. Stop 4 is drawn 17 line points, about 8.5 miles,
+    further along the road, with its mile marker kept. The stretch to it is then longer
+    than the markers say."""
+    bad = copy.deepcopy(good)
+    stop = bad["fuel_stops"][3]
+    line = bad["map"]["features"][0]["geometry"]["coordinates"]
+    at = line.index([stop["lng"], stop["lat"]])
+    stop["lng"], stop["lat"] = line[at + 17]
+    agree(bad)
+
+    found, lines = rules(bad, prices)
+    assert "R12" in found, lines
+
+
+def test_qb08_a_stop_that_buys_nothing(good, prices, use_real_stations):
+    """Review 9-Q0b, finding Q0b-5. A station along the road that the plan does not use is
+    added between stops 2 and 3, at its own road point, buying 0.00 gallons. A purchase
+    that rounds to 0.00 is not shown as a stop (architecture section 8)."""
+    bad = copy.deepcopy(good)
+    stops = bad["fuel_stops"]
+    coords, miles = load_road("nyc_la")
+    road = resample(coords, round(miles, 1))
+    used = {stop["station_id"] for stop in stops}
+    between = [
+        c
+        for c in stations_along(road, use_real_stations)
+        if stops[1]["mile_marker"] + 100 < c.mile < stops[2]["mile_marker"] - 100
+        and use_real_stations.info[c.station].opis_id not in used
+    ]
+    extra = between[0]
+    listing = prices[str(use_real_stations.info[extra.station].opis_id)]
+    lng, lat = bad["map"]["features"][0]["geometry"]["coordinates"][extra.point]
+    stops.insert(
+        2,
+        {
+            "order": 3,
+            "kind": "station",
+            "station_id": use_real_stations.info[extra.station].opis_id,
+            "name": listing.name,
+            "address": listing.address,
+            "city": listing.city,
+            "state": listing.state,
+            "mile_marker": Decimal(str(round(extra.mile, 1))),
+            "lat": lat,
+            "lng": lng,
+            "price_per_gallon": listing.price,
+            "gallons": Decimal("0.00"),
+            "cost": Decimal("0.00"),
+        },
+    )
+    agree(bad)
+
+    found, lines = rules(bad, prices)
+    assert found == {"R6"}, lines
+
+
+def test_qb09_a_stop_that_buys_less_than_nothing(good, prices):
+    """Review 9-Q0b, finding Q0b-5. Stop 3 buys -0.01 gallons at -0.03, and stop 4 buys
+    0.01 gallons more."""
+    bad = copy.deepcopy(good)
+    stops = bad["fuel_stops"]
+    stops[2]["gallons"] = Decimal("-0.01")
+    stops[3]["gallons"] += Decimal("0.01")
+    agree(bad)
+    assert stops[2]["cost"] == Decimal("-0.03")
+
+    found, lines = rules(bad, prices)
+    assert "R6" in found, lines
+
+
+def test_a_stop_buying_less_than_nothing_breaks_no_other_rule(ask, prices):
+    """The review's own case for Q0b-5: at stop cost 0, stop 15 (1.75 gallons) buys -0.01
+    instead and stop 16 buys 1.76 more. The tank never runs dry, so only R6 sees it."""
+    bad = ask("nyc_la", "New York, NY", "Los Angeles, CA", "0")
+    stops, summary = bad["fuel_stops"], bad["summary"]
+    assert stops[14]["gallons"] == Decimal("1.75")
+    stops[14]["gallons"] = Decimal("-0.01")
+    stops[15]["gallons"] += Decimal("1.76")
+    agree(bad)
+    summary["lowest_possible_fuel_cost"] = summary["total_fuel_cost"]  # R7 at stop cost 0
+
+    found, lines = rules(bad, prices, "0")
+    assert found == {"R6"}, lines
+
+
+def test_qb10_the_verifier_says_what_it_does_not_check():
+    """Review 9-Q0b, note N1. The verifier checks that a plan holds together and can be
+    driven; that it is the cheapest is the exactness tests' job, and its description must
+    say so."""
+    tree = ast.parse((ROOT / "tests" / "verify.py").read_text(encoding="utf-8"))
+    description = " ".join(ast.get_docstring(tree).split())
+
+    assert "consistent and possible" in description
+    assert "not that it is the cheapest" in description
+    assert "EX-01 to EX-04" in description
+
+
+# --- VR-01, VR-03, VR-04: what the verifier's caller can name -------------------------------
+
+
+def test_vr01_a_routing_host_the_caller_names(good, prices):
+    """Settled point 2: R15 accepts the two public routing servers, and any host its caller
+    names, such as the stand-in `fake-osrm` of the end-to-end run."""
+    stand_in = copy.deepcopy(good)
+    stand_in["meta"]["routing_server"] = "fake-osrm"
+
+    found, lines = rules(stand_in, prices)
+    assert found == {"R15"}, lines
+    assert verify_response(stand_in, prices, routing_hosts=["fake-osrm"]) == []
+    assert verify_response(good, prices, routing_hosts=["fake-osrm"]) == []
+
+
+@pytest.mark.django_db
+def test_vr03_the_places_the_caller_gives(client, monkeypatch):
+    """Settled point 3: R17 checks against the places its caller gives. EP-01's stations
+    are invented, all in Testville, TX, so the endpoint tests give their own places: one
+    for each station, where it stands. The default places have no Testville."""
+    reset_index()
+    try:
+        add_station(1, "3.20", *DALLAS, name="DALLAS START")
+        for opis_id, mile, price in ((2, 200, "3.10"), (3, 450, "3.00"), (4, 700, "3.20")):
+            add_station(opis_id, price, *on_road(mile))
+        coords, miles = straight_road(990.0)
+        road = Route(coords=coords, distance_miles=miles, server=SERVER_1, calls=1)
+        monkeypatch.setattr(routing, "fetch_route", lambda start, finish: road)
+        response = client.get(URL, {"start": "Dallas, TX", "finish": "Houston, TX"})
+        assert response.status_code == 200, response.content
+        body = json.loads(response.content, parse_float=Decimal)
+        own = places_from((s.city, s.state, s.lat, s.lng) for s in FuelStation.objects.all())
+        prices = listed_prices()
+    finally:
+        reset_index()
+    assert [stop["kind"] for stop in body["fuel_stops"]] == ["start", "station", "station"]
+
+    assert verify_response(body, prices, places=own) == []
+    found, lines = rules(body, prices)
+    assert found == {"R17"}, lines
+    assert "stop 2" in lines[0]
+    assert "stop 3" in lines[0]
+
+
+@pytest.mark.parametrize(("state", "city"), list(HAND_ADDED_PLACES))
+def test_vr04_the_hand_added_places_are_in_the_default_places(prices, state, city):
+    """Settled point 3: the five places added by hand (architecture section 6) are part of
+    R17's default places. A station stop at the position stations/places.py gives one
+    passes R17; 20 miles north of it, it does not, so R17 did run."""
+    lat, lng = HAND_ADDED_PLACES[(state, city)]
+    stop = {"order": 2, "kind": "station", "city": city, "state": state}
+    body = {"fuel_stops": [stop | {"lat": Decimal(str(lat)), "lng": Decimal(str(lng))}]}
+
+    found, lines = rules(body, prices)
+    assert "R17" not in found, lines
+
+    body["fuel_stops"][0]["lat"] += Decimal("0.29")  # 20 miles
+    found, lines = rules(body, prices)
+    assert "R17" in found, lines
 
 
 # --- VF-19, and the verifier's own reading of the CSV ----------------------------------------

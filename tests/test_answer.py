@@ -1,6 +1,7 @@
 """The answer builder: rounding, the order of the response, and the map.
 
-Test IDs (AN-01 ...) and rules (R3 ...) refer to docs/test-cases.md, sections 2.8 and 4.
+Test IDs (AN-01 ..., QB-07 ...) and rules (R3 ...) refer to docs/test-cases.md, sections
+2.8, 9.13 and 4.
 Each answer is read back from its JSON text with numbers as exact decimals, the way the
 correctness rules read a response.
 """
@@ -8,14 +9,14 @@ correctness rules read a response.
 import dataclasses
 import itertools
 import json
-import math
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
 import numpy as np
 import pytest
 
 from stations.places import Place
 from stations.types import StationInfo
+from tests.verify import Listing, places_from, verify_response
 from trips.services.answer import Stop, build_answer
 from trips.services.geo import RoadPoints
 
@@ -86,10 +87,6 @@ def _answer(road: RoadPoints, stops: list[Stop], **changes) -> dict:
 def _json(answer: dict) -> dict:
     """The answer as a client reads it: through its JSON text, numbers as exact decimals."""
     return json.loads(json.dumps(answer), parse_float=Decimal)
-
-
-def _cents(amount: Decimal) -> Decimal:
-    return amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def test_an01_gallons_are_rounded_as_a_running_total():
@@ -339,12 +336,16 @@ def test_an10_miles_and_coordinates_are_rounded():
 
 
 def test_an11_tiny_free_stop_purchase_is_not_counted_but_its_fuel_is():
+    """With QB-13's figures (review 9-Q0b, note N7 a). The 0.004-gallon purchase shows as
+    0.00 gallons, so it is not a stop, but the running total carries it into the next
+    purchase: 10.01 gallons, not 10.00. That hundredth is worth a cent here, so a builder
+    that dropped the purchase would show 70.00."""
     road, stops = _plan([30.0], ["3.50"], 300.0)
-    cheapest = [(Decimal("3.50"), 0.003), (Decimal("3.00"), 29.997)]
+    cheapest = [(Decimal("3.50"), 0.004), (Decimal("3.00"), 10.003), (Decimal("2.00"), 19.993)]
     summary = _json(_answer(road, stops, cheapest=cheapest))["summary"]
 
-    assert summary["lowest_possible_stops"] == 1
-    assert summary["lowest_possible_fuel_cost"] == Decimal("90.00")
+    assert summary["lowest_possible_stops"] == 2
+    assert summary["lowest_possible_fuel_cost"] == Decimal("70.01")  # 0.00 + 30.03 + 39.98
 
 
 def test_purchase_rounding_to_zero_gallons_is_not_a_stop():
@@ -388,140 +389,55 @@ def test_free_stops_plan_equal_to_the_plan_gives_equal_figures():
     assert summary["lowest_possible_stops"] == summary["stops"] == 2
 
 
-# Decimals allowed per field name (rule R14). Prices are left out: they keep every digit.
-DECIMALS = {
-    "distance_miles": 1,
-    "mile_marker": 1,
-    "first_fill_distance_miles": 1,
-    "gallons": 2,
-    "cost": 2,
-    "total_fuel_cost": 2,
-    "lowest_possible_fuel_cost": 2,
-    "stop_cost": 2,
-    "lat": 5,
-    "lng": 5,
-    "coordinates": 5,
-}
-NUMBERS = set(DECIMALS) | {
-    "price_per_gallon",
-    "order",
-    "station_id",
-    "stops",
-    "lowest_possible_stops",
-    "range_miles",
-    "miles_per_gallon",
-    "tank_gallons",
-    "starting_fuel_gallons",
-    "search_radius_miles",
-}
+def test_qb07_lowest_possible_stops_are_counted_from_the_shown_gallons():
+    """Review 9-Q0b, finding Q0b-4. At stop cost 0 the free-stops plan is the plan, so the
+    two counts must agree. The 0.004-gallon purchase is under 0.005 gallons, but its
+    running total crosses a hundredth, so it shows as 0.01 gallons: a stop in both."""
+    road, stops = _plan([10.004, 0.004, 9.992], ["3.00", "3.00", "3.00"], 200.0)
+    body = _json(_answer(road, stops, stop_cost=Decimal("0")))
+    summary = body["summary"]
 
-
-def _leaves(node, key=None):
-    """Every (field name, value) below `node`; values inside a list take the list's name."""
-    if isinstance(node, dict):
-        for name, value in node.items():
-            yield from _leaves(value, name)
-    elif isinstance(node, list):
-        for value in node:
-            yield from _leaves(value, key)
-    else:
-        yield key, node
+    assert [s["gallons"] for s in body["fuel_stops"]] == [
+        Decimal("10.00"),
+        Decimal("0.01"),
+        Decimal("9.99"),
+    ]
+    assert [s["cost"] for s in body["fuel_stops"]] == [
+        Decimal("30.00"),
+        Decimal("0.03"),
+        Decimal("29.97"),
+    ]
+    assert summary["total_fuel_cost"] == summary["lowest_possible_fuel_cost"] == Decimal("60.00")
+    assert summary["stops"] == summary["lowest_possible_stops"] == 3
 
 
 @pytest.mark.parametrize("first_fill_miles", [3.149, 47.26])
 def test_complete_answer_obeys_the_correctness_rules(first_fill_miles):
+    """QB-14 (review 9-Q0b, note N7 b): the whole answer goes through the independent
+    verifier, so every rule, R1 to R17, is checked. The stations are invented, so the test
+    gives the verifier their prices and places; `meta`, which the server adds, is added
+    here as one fresh routing call."""
     road, stops = _plan([10.004, 20.004, 9.992], ["3.00733333", "3.10", "3.20"], 400.0)
     cheapest = [(Decimal("3.00733333"), 0.004), (Decimal("3.10"), 29.996), (Decimal("2.9"), 10.0)]
-    body = _json(
-        _answer(
-            road,
-            stops,
-            cheapest=cheapest,
-            first_fill_miles=first_fill_miles,
-            stop_cost=Decimal("12.5"),
-        )
+    answer = _answer(
+        road,
+        stops,
+        cheapest=cheapest,
+        first_fill_miles=first_fill_miles,
+        stop_cost=Decimal("12.5"),
     )
-    summary, fuel_stops, features = body["summary"], body["fuel_stops"], body["map"]["features"]
-
-    # R3 Gallons
-    assert sum(s["gallons"] for s in fuel_stops) == summary["gallons"]
-    assert summary["gallons"] == summary["distance_miles"] / 10
-
-    # R4 Money
-    for s in fuel_stops:
-        assert s["cost"] == _cents(s["gallons"] * s["price_per_gallon"])
-    assert summary["total_fuel_cost"] == sum(s["cost"] for s in fuel_stops)
-
-    # R6 Stops
-    assert fuel_stops[0]["kind"] == "start"
-    assert fuel_stops[0]["mile_marker"] == 0
-    assert [fuel_stops[0]["lat"], fuel_stops[0]["lng"]] == [
-        summary["start"]["lat"],
-        summary["start"]["lng"],
-    ]
-    assert all(s["kind"] == "station" for s in fuel_stops[1:])
-    assert [s["order"] for s in fuel_stops] == list(range(1, len(fuel_stops) + 1))
-    markers = [s["mile_marker"] for s in fuel_stops]
-    assert all(a < b for a, b in itertools.pairwise(markers))
-    assert markers[-1] < summary["distance_miles"]
-    assert len({s["station_id"] for s in fuel_stops}) == len(fuel_stops)
-
-    # R8 Stop count
-    assert summary["stops"] == len(fuel_stops)
-    assert summary["stops"] >= math.ceil(summary["distance_miles"] / 500)
-
-    # R9 Assumptions
-    assert body["assumptions"] == {
-        "range_miles": 500,
-        "miles_per_gallon": 10,
-        "tank_gallons": 50,
-        "starting_fuel_gallons": 0,
-        "stop_cost": Decimal("12.5"),
-        "search_radius_miles": 5,
+    answer["meta"] = {
+        "routing_calls": 1,
+        "cache_hit": False,
+        "routing_server": "router.project-osrm.org",
+        "timings_ms": {"routing": 250.0, "own": 20.0, "total": 270.0},
     }
+    prices = {
+        str(stop.info.opis_id): Listing(
+            stop.info.price, stop.info.name, stop.info.address, stop.info.city, stop.info.state
+        )
+        for stop in stops
+    }
+    places = places_from((s.info.city, s.info.state, s.lat, s.lng) for s in stops)
 
-    # R10 First fill-up
-    first_fill = summary["first_fill_distance_miles"]
-    assert first_fill >= 0
-    if first_fill > 25:
-        assert len(body["warnings"]) == 1
-        assert fuel_stops[0]["name"] in body["warnings"][0]
-        assert str(first_fill) in body["warnings"][0]
-    else:
-        assert body["warnings"] == []
-
-    # R11 Map
-    assert body["map"]["type"] == "FeatureCollection"
-    route = features[0]
-    assert route["geometry"]["type"] == "LineString"
-    assert route["properties"]["kind"] == "route"
-    assert route["properties"]["distance_miles"] == summary["distance_miles"]
-    points = features[1:]
-    assert len(points) == len(fuel_stops) + 2
-    for point, s in zip(points[:-2], fuel_stops, strict=True):
-        props = point["properties"]
-        assert props["kind"] == "stop"
-        for field in ("order", "name", "mile_marker", "price_per_gallon", "gallons", "cost"):
-            assert props[field] == s[field]
-        assert props["title"] == f"{s['order']}. {s['name']}, {s['city']} {s['state']}"
-        assert point["geometry"]["coordinates"] == [s["lng"], s["lat"]]
-    start, finish = points[-2], points[-1]
-    assert start["properties"]["kind"] == "start"
-    assert start["geometry"]["coordinates"] == [summary["start"]["lng"], summary["start"]["lat"]]
-    assert finish["properties"]["kind"] == "finish"
-    assert finish["geometry"]["coordinates"] == [
-        summary["finish"]["lng"],
-        summary["finish"]["lat"],
-    ]
-    for point in points:
-        assert point["geometry"]["type"] == "Point"
-        assert "title" in point["properties"]
-        assert "marker-color" in point["properties"]
-
-    # R14 Precision
-    for name, value in _leaves(body):
-        if name in NUMBERS:
-            assert isinstance(value, int | Decimal), name
-            assert not isinstance(value, bool), name
-        if name in DECIMALS and isinstance(value, Decimal):
-            assert -value.as_tuple().exponent <= DECIMALS[name], (name, value)
+    assert verify_response(_json(answer), prices, "12.5", places=places) == []
