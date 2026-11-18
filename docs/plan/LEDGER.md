@@ -47,3 +47,4 @@ Repo: this repository (commit identity must be `Razi Ullah <50240668+raziullah7@
 - Ruling: to stay inside 100 live routing calls, the controller's own full live run happens once, after the fix wave. The Phase 6 container check uses a short list of cases, not the full run.
 - Phase 5 fix wave (5X, Opus) done: F1 to F12, each with a test seen to fail first. Controller read the diff of every application file, corrected one comment in settings, reran the suite (348 passed, slow 1 passed, lint clean).
 - Controller's own full live run: 49 of 49 passed. Results merged into docs/test-cases.md. Seven trips pinned in tests/test_regression.py. Live routing calls so far: about 77 of 100.
+- **Phase 5: complete (commits 9a0fcd6, 41897a8).** Gate 5 passed.
