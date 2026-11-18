@@ -3,7 +3,7 @@
 How the API is built, and why each part is the way it is.
 `requirements.md` says what is required. IDs such as FR-6 and D-9 refer to it.
 
-Figures marked *measured* come from research runs on 18 Nov 2026 against the supplied CSV and real routes. They were produced by throwaway scripts and will be replaced with figures from the finished API.
+Figures marked *measured* were taken on 18 Nov 2026 against the supplied CSV and real routes. Those in sections 5 to 9 come from the research scripts in `docs/plan/research/`, run before the API was built, and are the reasons for the decisions. Section 14 and the README hold the figures of the finished API.
 
 ## 1. The idea
 
@@ -58,16 +58,19 @@ In Django terms the "controller" is the **view**. Patterns used, by their usual 
 
 ```text
 milemarker-api/
-├── manage.py, pyproject.toml, uv.lock, .env.example, README.md
-├── Dockerfile, docker-compose.yml
+├── manage.py, pyproject.toml, uv.lock, .python-version, .env.example, README.md
+├── Dockerfile, docker-compose.yml, .dockerignore
+├── docker/
+│   └── entrypoint.sh          container start: migrate, load_stations, then gunicorn
 ├── config/                    settings.py, urls.py, wsgi.py
 ├── stations/                  the data side
 │   ├── exceptions.py          the base error, and the place and station errors
 │   ├── sphere.py              distance maths on a sphere
-│   ├── types.py               StationInfo, StationIndex
+│   ├── types.py               Place, StationInfo, StationIndex
 │   ├── models.py              FuelStation
 │   ├── places.py              place name → coordinates, from the offline table
 │   ├── index.py               all stations as arrays in memory, loaded once
+│   ├── migrations/            the FuelStation table
 │   └── management/commands/load_stations.py
 ├── trips/                     the request side
 │   ├── exceptions.py          the trip errors
@@ -79,10 +82,21 @@ milemarker-api/
 │       ├── corridor.py        stations along the road
 │       ├── fuel.py            the fuel plan
 │       └── answer.py          builds the response body
-├── data/                      fuel CSV, us_cities.csv, borders.json, README.md
-├── docs/                      requirements, architecture, PRD, use cases, test cases, Postman collection
-├── scripts/                   live_check.py
-└── tests/
+├── data/                      fuel CSV, us_cities.csv and its licence, borders.json, README.md
+├── scripts/
+│   └── live_check.py          runs the live cases of the test catalogue against a running server
+├── tests/
+│   ├── conftest.py            shared fixtures, including the network block
+│   ├── exact.py               the linear-programming and brute-force checks
+│   ├── verify.py              the independent verifier
+│   ├── test_*.py              one file per area: places, loader, index, sphere, geo, corridor,
+│   │                          fuel, answer, routing, planner, api, project, real_data,
+│   │                          regression, verify
+│   └── fixtures/              a small CSV, and recorded roads under roads/
+└── docs/
+    ├── requirements.md, prd.md, backend-architecture.md, use-cases.md, test-cases.md
+    ├── postman/               the Postman collection
+    └── plan/                  the build plan, phase by phase, with briefs and reports
 ```
 
 ## 5. The request path, step by step
@@ -207,7 +221,7 @@ So each stop is charged a fixed $10 while the plan is being chosen (D-9). It sta
 | $15 | 7 | $865.93 | 25.8 gal |
 | $25 | 6 | $884.79 | 39.1 gal |
 
-*Measured* on New York to Los Angeles, 2,801 miles, by the research prototype. At $10 the plan costs 1.3% more fuel than the absolute minimum and makes 10 fewer stops. For comparison, a driver who simply runs the tank down and refuels at whatever station is there pays $972.78. The finished API scales its mile markers slightly differently, so its figures will be close to these, not identical.
+*Measured* on New York to Los Angeles, 2,801 miles, by the research prototype. At $10 the plan costs 1.3% more fuel than the absolute minimum and makes 10 fewer stops. For comparison, a driver who simply runs the tank down and refuels at whatever station is there pays $972.78. The finished API scales its mile markers slightly differently and computes the lowest possible bill on every station, so its figures are close to these, not identical: 7 stops and $867.27 at $10, and 19 stops and $855.95 at $0 (live, 18 Nov 2026).
 
 ### How the best list of stops is found
 
@@ -441,19 +455,25 @@ No test reaches beyond the local machine. A test fixture blocks every connection
 
 ## 14. Speed
 
-*Measured* on the New York to Los Angeles road, the largest tested:
+*Measured* on the finished API for the New York to Los Angeles road, the largest tested. The API was run from source with `manage.py runserver` on the development machine, against the real routing server, on 18 Nov 2026. The steps were timed during build (Phase 3), and the whole request by the live run (Phases 4 and 5).
 
 | Step | Time |
 |---|---|
-| Routing call | 600 to 1,700 ms (network, outside our control) |
-| Read the routing response | 25 ms |
-| Mile markers and station search | 4 ms |
-| Border check | 7 ms (40 ms on Boston to Seattle, which follows the border for longest) |
-| Fuel plan and the lowest possible bill | 5 ms |
-| Build the response | about 10 ms (estimate, not measured) |
-| **Our own work** | **about 50 ms**, against a limit of 100 ms (NFR-1) |
+| Routing call | 2,646 ms on the first live request (network, outside our control) |
+| Re-space the road | 1.9 ms |
+| Station search and thinning, 6,626 stations | 2.3 ms |
+| Border check | 1.8 ms on Boston to Seattle, the longest road tested |
+| Fuel plan, 100 stations | 5 ms |
+| Lowest possible bill, 400 stations | under 0.3 ms |
+| Fuel plan on every station (the rare fallback, 400 stations) | 230 to 340 ms |
 
-Each figure is a single run of a research script on this machine, not an average.
+| Whole request | Our own work | Round trip |
+|---|---|---|
+| A new trip | 19.5 ms, against a limit of 100 ms (NFR-1) | |
+| The same trip again, answer cached | 1.1 ms | 23.6 ms, against a limit of 50 ms (NFR-11) |
+| The same trip, another stop cost (road cached) | 11.0 ms | 31.7 ms |
+
+"Our own work" is `meta.timings_ms.own`: everything except the routing call and the writing of the JSON. Each figure is one run of the live check, not an average. The first request after the server starts is as fast as the rest, because `warm_up()` (section 6) loads the places, borders and stations as the server starts.
 
 **The border check must use its own, coarser sampling.** It tests one road point every 2 miles, and only points north of 41.6° or south of 32.8°, the only latitudes where Canada or Mexico can be. Run on every half-mile point it took 115 to 149 ms by itself (*measured*), which would break NFR-1.
 

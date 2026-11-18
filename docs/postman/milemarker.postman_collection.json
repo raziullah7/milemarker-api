@@ -1,0 +1,834 @@
+{
+  "info": {
+    "name": "Mile Marker API",
+    "description": "Mile Marker API plans a fuel-efficient road trip between two US cities: the route, where to stop for fuel, and what it costs, with a GeoJSON map.\nThe one collection variable is base_url (default http://127.0.0.1:8000); change it to point at another server.\nRun the requests in order: the Demo folder saves figures from the first request and the next three check themselves against them. The Errors folder needs no earlier request.\nFrom the command line: npx newman run milemarker.postman_collection.json --delay-request 1200",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Demo",
+      "item": [
+        {
+          "name": "New York to Los Angeles: the full plan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "var s = body.summary, stops = body.fuel_stops;",
+                  "pm.test(\"fewer than 10 stops, and summary.stops matches the list\", function () { pm.expect(stops.length).to.be.below(10); pm.expect(s.stops).to.eql(stops.length); });",
+                  "pm.test(\"total_fuel_cost equals the sum of the stops' costs, to the cent\", function () {",
+                  "  var cents = stops.reduce(function (a, x) { return a + Math.round(x.cost * 100); }, 0);",
+                  "  pm.expect(Math.round(s.total_fuel_cost * 100)).to.eql(cents);",
+                  "});",
+                  "pm.test(\"gallons equals distance_miles / 10\", function () { pm.expect(Math.abs(s.gallons - s.distance_miles / 10)).to.be.below(0.006); });",
+                  "pm.test(\"first stop is the start\", function () { pm.expect(stops[0].kind).to.eql(\"start\"); });",
+                  "pm.test(\"lowest_possible_fuel_cost is not above total_fuel_cost\", function () { pm.expect(s.lowest_possible_fuel_cost).to.be.at.most(s.total_fuel_cost + 0.005); });",
+                  "pm.test(\"meta is consistent (cache_hit means no routing call)\", function () {",
+                  "  pm.expect(body.meta.routing_calls).to.be.within(0, 2);",
+                  "  if (body.meta.cache_hit) { pm.expect(body.meta.routing_calls).to.eql(0); }",
+                  "});",
+                  "pm.test(\"distance_miles within 2% of 2800.7\", function () { pm.expect(s.distance_miles).to.be.within(2800.7 * 0.98, 2800.7 * 1.02); });",
+                  "pm.test(\"total_fuel_cost within 2% of 865.93\", function () { pm.expect(s.total_fuel_cost).to.be.within(865.93 * 0.98, 865.93 * 1.02); });",
+                  "pm.test(\"lowest_possible_fuel_cost within 2% of 854.65\", function () { pm.expect(s.lowest_possible_fuel_cost).to.be.within(854.65 * 0.98, 854.65 * 1.02); });",
+                  "pm.test(\"first_fill_distance_miles within 2% of 3.1\", function () { pm.expect(s.first_fill_distance_miles).to.be.within(3.1 * 0.98, 3.1 * 1.02); });",
+                  "pm.test(\"warnings is empty\", function () { pm.expect(body.warnings).to.eql([]); });",
+                  "pm.test(\"labels are New York, NY and Los Angeles, CA\", function () { pm.expect(s.start.label).to.eql(\"New York, NY\"); pm.expect(s.finish.label).to.eql(\"Los Angeles, CA\"); });",
+                  "pm.collectionVariables.set(\"p01_total\", s.total_fuel_cost);",
+                  "pm.collectionVariables.set(\"p01_stops\", s.stops);",
+                  "pm.collectionVariables.set(\"p01_lowest\", s.lowest_possible_fuel_cost);",
+                  "// Map for the Visualize tab. Guarded so a failure here can never fail the run (Newman has no visualizer).",
+                  "try {",
+                  "  if (pm.visualizer && typeof pm.visualizer.set === \"function\" && body && body.map) {",
+                  "    pm.visualizer.set(\"\\n<link rel=\\\"stylesheet\\\" href=\\\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\\\">\\n<style>html,body{margin:0;padding:0;font-family:sans-serif}#m{height:90vh;min-height:480px}#note{padding:4px 8px;font-size:12px}</style>\\n<div id=\\\"note\\\">Loading map...</div>\\n<div id=\\\"m\\\"></div>\\n<script src=\\\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\\\"></script>\\n<script>\\npm.getData(function (err, data) {\\n  var note = document.getElementById('note');\\n  if (err || !data || !data.map) { note.textContent = 'No map data'; return; }\\n  if (typeof L === 'undefined') { note.textContent = 'Leaflet did not load (CDN blocked?)'; return; }\\n  var map = L.map('m');\\n  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {\\n    maxZoom: 19,\\n    attribution: '&copy; OpenStreetMap contributors'\\n  }).addTo(map);\\n  var lineBounds = null;\\n  data.map.features.forEach(function (f) {\\n    if (f.geometry.type === 'LineString') {\\n      var line = L.geoJSON(f, { style: function () { return { color: '#d6336c', weight: 4 }; } }).addTo(map);\\n      lineBounds = line.getBounds();\\n    } else if (f.geometry.type === 'Point') {\\n      var ll = [f.geometry.coordinates[1], f.geometry.coordinates[0]];\\n      var el = document.createElement('div');\\n      el.textContent = (f.properties && f.properties.title) || 'stop';\\n      L.marker(ll).addTo(map).bindPopup(el);\\n    }\\n  });\\n  if (lineBounds) { map.fitBounds(lineBounds, { padding: [20, 20] }); } else { map.setView([39, -98], 4); }\\n  note.textContent = data.map.features.length + ' features';\\n});\\n</script>\", { map: body.map });",
+                  "  }",
+                  "} catch (e) { /* ignore */ }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Case P01. Look at: summary (distance, stops, total, and lowest_possible_fuel_cost), then open the Visualize tab for the map. The first run makes one routing call; the checks save this response's total, stop count and lowest possible bill for the next three requests.",
+            "url": {
+              "raw": "{{base_url}}/api/v1/route/?start=New York, NY&finish=Los Angeles, CA",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "route",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "start",
+                  "value": "New York, NY"
+                },
+                {
+                  "key": "finish",
+                  "value": "Los Angeles, CA"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Same trip again: answered from the cache",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "var s = body.summary, stops = body.fuel_stops;",
+                  "pm.test(\"fewer than 10 stops, and summary.stops matches the list\", function () { pm.expect(stops.length).to.be.below(10); pm.expect(s.stops).to.eql(stops.length); });",
+                  "pm.test(\"total_fuel_cost equals the sum of the stops' costs, to the cent\", function () {",
+                  "  var cents = stops.reduce(function (a, x) { return a + Math.round(x.cost * 100); }, 0);",
+                  "  pm.expect(Math.round(s.total_fuel_cost * 100)).to.eql(cents);",
+                  "});",
+                  "pm.test(\"gallons equals distance_miles / 10\", function () { pm.expect(Math.abs(s.gallons - s.distance_miles / 10)).to.be.below(0.006); });",
+                  "pm.test(\"first stop is the start\", function () { pm.expect(stops[0].kind).to.eql(\"start\"); });",
+                  "pm.test(\"lowest_possible_fuel_cost is not above total_fuel_cost\", function () { pm.expect(s.lowest_possible_fuel_cost).to.be.at.most(s.total_fuel_cost + 0.005); });",
+                  "pm.test(\"meta is consistent (cache_hit means no routing call)\", function () {",
+                  "  pm.expect(body.meta.routing_calls).to.be.within(0, 2);",
+                  "  if (body.meta.cache_hit) { pm.expect(body.meta.routing_calls).to.eql(0); }",
+                  "});",
+                  "pm.test(\"same total and stop count as P01\", function () { pm.expect(s.total_fuel_cost).to.eql(Number(pm.collectionVariables.get(\"p01_total\"))); pm.expect(s.stops).to.eql(Number(pm.collectionVariables.get(\"p01_stops\"))); });",
+                  "pm.test(\"no routing call, cache hit\", function () { pm.expect(body.meta.routing_calls).to.eql(0); pm.expect(body.meta.cache_hit).to.eql(true); });",
+                  "// Map for the Visualize tab. Guarded so a failure here can never fail the run (Newman has no visualizer).",
+                  "try {",
+                  "  if (pm.visualizer && typeof pm.visualizer.set === \"function\" && body && body.map) {",
+                  "    pm.visualizer.set(\"\\n<link rel=\\\"stylesheet\\\" href=\\\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\\\">\\n<style>html,body{margin:0;padding:0;font-family:sans-serif}#m{height:90vh;min-height:480px}#note{padding:4px 8px;font-size:12px}</style>\\n<div id=\\\"note\\\">Loading map...</div>\\n<div id=\\\"m\\\"></div>\\n<script src=\\\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\\\"></script>\\n<script>\\npm.getData(function (err, data) {\\n  var note = document.getElementById('note');\\n  if (err || !data || !data.map) { note.textContent = 'No map data'; return; }\\n  if (typeof L === 'undefined') { note.textContent = 'Leaflet did not load (CDN blocked?)'; return; }\\n  var map = L.map('m');\\n  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {\\n    maxZoom: 19,\\n    attribution: '&copy; OpenStreetMap contributors'\\n  }).addTo(map);\\n  var lineBounds = null;\\n  data.map.features.forEach(function (f) {\\n    if (f.geometry.type === 'LineString') {\\n      var line = L.geoJSON(f, { style: function () { return { color: '#d6336c', weight: 4 }; } }).addTo(map);\\n      lineBounds = line.getBounds();\\n    } else if (f.geometry.type === 'Point') {\\n      var ll = [f.geometry.coordinates[1], f.geometry.coordinates[0]];\\n      var el = document.createElement('div');\\n      el.textContent = (f.properties && f.properties.title) || 'stop';\\n      L.marker(ll).addTo(map).bindPopup(el);\\n    }\\n  });\\n  if (lineBounds) { map.fitBounds(lineBounds, { padding: [20, 20] }); } else { map.setView([39, -98], 4); }\\n  note.textContent = data.map.features.length + ' features';\\n});\\n</script>\", { map: body.map });",
+                  "  }",
+                  "} catch (e) { /* ignore */ }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Case P02. Look at: meta.routing_calls is 0 and meta.cache_hit is true, and the total is the same as the previous request.",
+            "url": {
+              "raw": "{{base_url}}/api/v1/route/?start=New York, NY&finish=Los Angeles, CA",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "route",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "start",
+                  "value": "New York, NY"
+                },
+                {
+                  "key": "finish",
+                  "value": "Los Angeles, CA"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Same trip, stops free (stop_cost=0): the lowest possible bill",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "var s = body.summary, stops = body.fuel_stops;",
+                  "pm.test(\"fewer than 40 stops, and summary.stops matches the list\", function () { pm.expect(stops.length).to.be.below(40); pm.expect(s.stops).to.eql(stops.length); });",
+                  "pm.test(\"total_fuel_cost equals the sum of the stops' costs, to the cent\", function () {",
+                  "  var cents = stops.reduce(function (a, x) { return a + Math.round(x.cost * 100); }, 0);",
+                  "  pm.expect(Math.round(s.total_fuel_cost * 100)).to.eql(cents);",
+                  "});",
+                  "pm.test(\"gallons equals distance_miles / 10\", function () { pm.expect(Math.abs(s.gallons - s.distance_miles / 10)).to.be.below(0.006); });",
+                  "pm.test(\"first stop is the start\", function () { pm.expect(stops[0].kind).to.eql(\"start\"); });",
+                  "pm.test(\"lowest_possible_fuel_cost is not above total_fuel_cost\", function () { pm.expect(s.lowest_possible_fuel_cost).to.be.at.most(s.total_fuel_cost + 0.005); });",
+                  "pm.test(\"meta is consistent (cache_hit means no routing call)\", function () {",
+                  "  pm.expect(body.meta.routing_calls).to.be.within(0, 2);",
+                  "  if (body.meta.cache_hit) { pm.expect(body.meta.routing_calls).to.eql(0); }",
+                  "});",
+                  "pm.test(\"total equals P01's lowest possible bill, to the cent\", function () { pm.expect(Math.round(s.total_fuel_cost * 100)).to.eql(Math.round(Number(pm.collectionVariables.get(\"p01_lowest\")) * 100)); });",
+                  "pm.test(\"total equals its own lowest_possible_fuel_cost\", function () { pm.expect(s.total_fuel_cost).to.eql(s.lowest_possible_fuel_cost); });",
+                  "pm.test(\"more stops than P01\", function () { pm.expect(s.stops).to.be.above(Number(pm.collectionVariables.get(\"p01_stops\"))); });",
+                  "pm.test(\"assumptions.stop_cost is 0\", function () { pm.expect(body.assumptions.stop_cost).to.eql(0); });",
+                  "pm.test(\"no routing call (the road is cached)\", function () { pm.expect(body.meta.routing_calls).to.eql(0); });",
+                  "// Map for the Visualize tab. Guarded so a failure here can never fail the run (Newman has no visualizer).",
+                  "try {",
+                  "  if (pm.visualizer && typeof pm.visualizer.set === \"function\" && body && body.map) {",
+                  "    pm.visualizer.set(\"\\n<link rel=\\\"stylesheet\\\" href=\\\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\\\">\\n<style>html,body{margin:0;padding:0;font-family:sans-serif}#m{height:90vh;min-height:480px}#note{padding:4px 8px;font-size:12px}</style>\\n<div id=\\\"note\\\">Loading map...</div>\\n<div id=\\\"m\\\"></div>\\n<script src=\\\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\\\"></script>\\n<script>\\npm.getData(function (err, data) {\\n  var note = document.getElementById('note');\\n  if (err || !data || !data.map) { note.textContent = 'No map data'; return; }\\n  if (typeof L === 'undefined') { note.textContent = 'Leaflet did not load (CDN blocked?)'; return; }\\n  var map = L.map('m');\\n  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {\\n    maxZoom: 19,\\n    attribution: '&copy; OpenStreetMap contributors'\\n  }).addTo(map);\\n  var lineBounds = null;\\n  data.map.features.forEach(function (f) {\\n    if (f.geometry.type === 'LineString') {\\n      var line = L.geoJSON(f, { style: function () { return { color: '#d6336c', weight: 4 }; } }).addTo(map);\\n      lineBounds = line.getBounds();\\n    } else if (f.geometry.type === 'Point') {\\n      var ll = [f.geometry.coordinates[1], f.geometry.coordinates[0]];\\n      var el = document.createElement('div');\\n      el.textContent = (f.properties && f.properties.title) || 'stop';\\n      L.marker(ll).addTo(map).bindPopup(el);\\n    }\\n  });\\n  if (lineBounds) { map.fitBounds(lineBounds, { padding: [20, 20] }); } else { map.setView([39, -98], 4); }\\n  note.textContent = data.map.features.length + ' features';\\n});\\n</script>\", { map: body.map });",
+                  "  }",
+                  "} catch (e) { /* ignore */ }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Case P03. Look at: the total equals the lowest_possible_fuel_cost shown in the first request, bought over many more stops; no new routing call.",
+            "url": {
+              "raw": "{{base_url}}/api/v1/route/?start=New York, NY&finish=Los Angeles, CA&stop_cost=0",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "route",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "start",
+                  "value": "New York, NY"
+                },
+                {
+                  "key": "finish",
+                  "value": "Los Angeles, CA"
+                },
+                {
+                  "key": "stop_cost",
+                  "value": "0"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Same trip, each stop costs $25: fewer stops, dearer fuel",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "var s = body.summary, stops = body.fuel_stops;",
+                  "pm.test(\"fewer than 10 stops, and summary.stops matches the list\", function () { pm.expect(stops.length).to.be.below(10); pm.expect(s.stops).to.eql(stops.length); });",
+                  "pm.test(\"total_fuel_cost equals the sum of the stops' costs, to the cent\", function () {",
+                  "  var cents = stops.reduce(function (a, x) { return a + Math.round(x.cost * 100); }, 0);",
+                  "  pm.expect(Math.round(s.total_fuel_cost * 100)).to.eql(cents);",
+                  "});",
+                  "pm.test(\"gallons equals distance_miles / 10\", function () { pm.expect(Math.abs(s.gallons - s.distance_miles / 10)).to.be.below(0.006); });",
+                  "pm.test(\"first stop is the start\", function () { pm.expect(stops[0].kind).to.eql(\"start\"); });",
+                  "pm.test(\"lowest_possible_fuel_cost is not above total_fuel_cost\", function () { pm.expect(s.lowest_possible_fuel_cost).to.be.at.most(s.total_fuel_cost + 0.005); });",
+                  "pm.test(\"meta is consistent (cache_hit means no routing call)\", function () {",
+                  "  pm.expect(body.meta.routing_calls).to.be.within(0, 2);",
+                  "  if (body.meta.cache_hit) { pm.expect(body.meta.routing_calls).to.eql(0); }",
+                  "});",
+                  "pm.test(\"no more stops than P01\", function () { pm.expect(s.stops).to.be.at.most(Number(pm.collectionVariables.get(\"p01_stops\"))); });",
+                  "pm.test(\"total not below P01's\", function () { pm.expect(s.total_fuel_cost).to.be.at.least(Number(pm.collectionVariables.get(\"p01_total\"))); });",
+                  "pm.test(\"total_fuel_cost within 2% of 884.79\", function () { pm.expect(s.total_fuel_cost).to.be.within(884.79 * 0.98, 884.79 * 1.02); });",
+                  "pm.test(\"assumptions.stop_cost is 25\", function () { pm.expect(body.assumptions.stop_cost).to.eql(25); });",
+                  "pm.test(\"no routing call (the road is cached)\", function () { pm.expect(body.meta.routing_calls).to.eql(0); });",
+                  "// Map for the Visualize tab. Guarded so a failure here can never fail the run (Newman has no visualizer).",
+                  "try {",
+                  "  if (pm.visualizer && typeof pm.visualizer.set === \"function\" && body && body.map) {",
+                  "    pm.visualizer.set(\"\\n<link rel=\\\"stylesheet\\\" href=\\\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\\\">\\n<style>html,body{margin:0;padding:0;font-family:sans-serif}#m{height:90vh;min-height:480px}#note{padding:4px 8px;font-size:12px}</style>\\n<div id=\\\"note\\\">Loading map...</div>\\n<div id=\\\"m\\\"></div>\\n<script src=\\\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\\\"></script>\\n<script>\\npm.getData(function (err, data) {\\n  var note = document.getElementById('note');\\n  if (err || !data || !data.map) { note.textContent = 'No map data'; return; }\\n  if (typeof L === 'undefined') { note.textContent = 'Leaflet did not load (CDN blocked?)'; return; }\\n  var map = L.map('m');\\n  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {\\n    maxZoom: 19,\\n    attribution: '&copy; OpenStreetMap contributors'\\n  }).addTo(map);\\n  var lineBounds = null;\\n  data.map.features.forEach(function (f) {\\n    if (f.geometry.type === 'LineString') {\\n      var line = L.geoJSON(f, { style: function () { return { color: '#d6336c', weight: 4 }; } }).addTo(map);\\n      lineBounds = line.getBounds();\\n    } else if (f.geometry.type === 'Point') {\\n      var ll = [f.geometry.coordinates[1], f.geometry.coordinates[0]];\\n      var el = document.createElement('div');\\n      el.textContent = (f.properties && f.properties.title) || 'stop';\\n      L.marker(ll).addTo(map).bindPopup(el);\\n    }\\n  });\\n  if (lineBounds) { map.fitBounds(lineBounds, { padding: [20, 20] }); } else { map.setView([39, -98], 4); }\\n  note.textContent = data.map.features.length + ' features';\\n});\\n</script>\", { map: body.map });",
+                  "  }",
+                  "} catch (e) { /* ignore */ }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Case P04. Look at: no more stops than the first request and a total that is not lower; no new routing call.",
+            "url": {
+              "raw": "{{base_url}}/api/v1/route/?start=New York, NY&finish=Los Angeles, CA&stop_cost=25",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "route",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "start",
+                  "value": "New York, NY"
+                },
+                {
+                  "key": "finish",
+                  "value": "Los Angeles, CA"
+                },
+                {
+                  "key": "stop_cost",
+                  "value": "25"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. More trips",
+      "item": [
+        {
+          "name": "Los Angeles to New York: a long first fill-up",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "var s = body.summary, stops = body.fuel_stops;",
+                  "pm.test(\"fewer than 12 stops, and summary.stops matches the list\", function () { pm.expect(stops.length).to.be.below(12); pm.expect(s.stops).to.eql(stops.length); });",
+                  "pm.test(\"total_fuel_cost equals the sum of the stops' costs, to the cent\", function () {",
+                  "  var cents = stops.reduce(function (a, x) { return a + Math.round(x.cost * 100); }, 0);",
+                  "  pm.expect(Math.round(s.total_fuel_cost * 100)).to.eql(cents);",
+                  "});",
+                  "pm.test(\"gallons equals distance_miles / 10\", function () { pm.expect(Math.abs(s.gallons - s.distance_miles / 10)).to.be.below(0.006); });",
+                  "pm.test(\"first stop is the start\", function () { pm.expect(stops[0].kind).to.eql(\"start\"); });",
+                  "pm.test(\"lowest_possible_fuel_cost is not above total_fuel_cost\", function () { pm.expect(s.lowest_possible_fuel_cost).to.be.at.most(s.total_fuel_cost + 0.005); });",
+                  "pm.test(\"meta is consistent (cache_hit means no routing call)\", function () {",
+                  "  pm.expect(body.meta.routing_calls).to.be.within(0, 2);",
+                  "  if (body.meta.cache_hit) { pm.expect(body.meta.routing_calls).to.eql(0); }",
+                  "});",
+                  "pm.test(\"first_fill_distance_miles within 2% of 121\", function () { pm.expect(s.first_fill_distance_miles).to.be.within(121 * 0.98, 121 * 1.02); });",
+                  "pm.test(\"first fill-up is over 100 miles\", function () { pm.expect(s.first_fill_distance_miles).to.be.above(100); });",
+                  "pm.test(\"one warning naming the station and the distance\", function () {",
+                  "  pm.expect(body.warnings).to.have.lengthOf(1);",
+                  "  pm.expect(body.warnings[0]).to.include(stops[0].name).and.include(String(s.first_fill_distance_miles));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Case P05. Look at: the nearest listed station to Los Angeles is about 121 miles away, so first_fill_distance_miles is large and warnings holds one sentence about it.",
+            "url": {
+              "raw": "{{base_url}}/api/v1/route/?start=Los Angeles, CA&finish=New York, NY",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "route",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "start",
+                  "value": "Los Angeles, CA"
+                },
+                {
+                  "key": "finish",
+                  "value": "New York, NY"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Seattle to Miami: a long trip, coast to corner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "var s = body.summary, stops = body.fuel_stops;",
+                  "pm.test(\"fewer than 12 stops, and summary.stops matches the list\", function () { pm.expect(stops.length).to.be.below(12); pm.expect(s.stops).to.eql(stops.length); });",
+                  "pm.test(\"total_fuel_cost equals the sum of the stops' costs, to the cent\", function () {",
+                  "  var cents = stops.reduce(function (a, x) { return a + Math.round(x.cost * 100); }, 0);",
+                  "  pm.expect(Math.round(s.total_fuel_cost * 100)).to.eql(cents);",
+                  "});",
+                  "pm.test(\"gallons equals distance_miles / 10\", function () { pm.expect(Math.abs(s.gallons - s.distance_miles / 10)).to.be.below(0.006); });",
+                  "pm.test(\"first stop is the start\", function () { pm.expect(stops[0].kind).to.eql(\"start\"); });",
+                  "pm.test(\"lowest_possible_fuel_cost is not above total_fuel_cost\", function () { pm.expect(s.lowest_possible_fuel_cost).to.be.at.most(s.total_fuel_cost + 0.005); });",
+                  "pm.test(\"meta is consistent (cache_hit means no routing call)\", function () {",
+                  "  pm.expect(body.meta.routing_calls).to.be.within(0, 2);",
+                  "  if (body.meta.cache_hit) { pm.expect(body.meta.routing_calls).to.eql(0); }",
+                  "});",
+                  "pm.test(\"distance_miles within 2% of 3301.2\", function () { pm.expect(s.distance_miles).to.be.within(3301.2 * 0.98, 3301.2 * 1.02); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Case P06. Look at: about 3,300 miles planned with fewer than 12 stops.",
+            "url": {
+              "raw": "{{base_url}}/api/v1/route/?start=Seattle, WA&finish=Miami, FL",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "route",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "start",
+                  "value": "Seattle, WA"
+                },
+                {
+                  "key": "finish",
+                  "value": "Miami, FL"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Dallas to Houston: a trip under 500 miles",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "var s = body.summary, stops = body.fuel_stops;",
+                  "pm.test(\"fewer than 3 stops, and summary.stops matches the list\", function () { pm.expect(stops.length).to.be.below(3); pm.expect(s.stops).to.eql(stops.length); });",
+                  "pm.test(\"total_fuel_cost equals the sum of the stops' costs, to the cent\", function () {",
+                  "  var cents = stops.reduce(function (a, x) { return a + Math.round(x.cost * 100); }, 0);",
+                  "  pm.expect(Math.round(s.total_fuel_cost * 100)).to.eql(cents);",
+                  "});",
+                  "pm.test(\"gallons equals distance_miles / 10\", function () { pm.expect(Math.abs(s.gallons - s.distance_miles / 10)).to.be.below(0.006); });",
+                  "pm.test(\"first stop is the start\", function () { pm.expect(stops[0].kind).to.eql(\"start\"); });",
+                  "pm.test(\"lowest_possible_fuel_cost is not above total_fuel_cost\", function () { pm.expect(s.lowest_possible_fuel_cost).to.be.at.most(s.total_fuel_cost + 0.005); });",
+                  "pm.test(\"meta is consistent (cache_hit means no routing call)\", function () {",
+                  "  pm.expect(body.meta.routing_calls).to.be.within(0, 2);",
+                  "  if (body.meta.cache_hit) { pm.expect(body.meta.routing_calls).to.eql(0); }",
+                  "});",
+                  "pm.test(\"distance_miles within 2% of 238.1\", function () { pm.expect(s.distance_miles).to.be.within(238.1 * 0.98, 238.1 * 1.02); });",
+                  "pm.test(\"total_fuel_cost is above 0\", function () { pm.expect(s.total_fuel_cost).to.be.above(0); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Case P08. Look at: a short trip still gets a plan with one stop at the start and a fuel bill above zero.",
+            "url": {
+              "raw": "{{base_url}}/api/v1/route/?start=Dallas, TX&finish=Houston, TX",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "route",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "start",
+                  "value": "Dallas, TX"
+                },
+                {
+                  "key": "finish",
+                  "value": "Houston, TX"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Loose place names: st. louis, mo to Winston-Salem, North Carolina",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "var s = body.summary, stops = body.fuel_stops;",
+                  "pm.test(\"fewer than 12 stops, and summary.stops matches the list\", function () { pm.expect(stops.length).to.be.below(12); pm.expect(s.stops).to.eql(stops.length); });",
+                  "pm.test(\"total_fuel_cost equals the sum of the stops' costs, to the cent\", function () {",
+                  "  var cents = stops.reduce(function (a, x) { return a + Math.round(x.cost * 100); }, 0);",
+                  "  pm.expect(Math.round(s.total_fuel_cost * 100)).to.eql(cents);",
+                  "});",
+                  "pm.test(\"gallons equals distance_miles / 10\", function () { pm.expect(Math.abs(s.gallons - s.distance_miles / 10)).to.be.below(0.006); });",
+                  "pm.test(\"first stop is the start\", function () { pm.expect(stops[0].kind).to.eql(\"start\"); });",
+                  "pm.test(\"lowest_possible_fuel_cost is not above total_fuel_cost\", function () { pm.expect(s.lowest_possible_fuel_cost).to.be.at.most(s.total_fuel_cost + 0.005); });",
+                  "pm.test(\"meta is consistent (cache_hit means no routing call)\", function () {",
+                  "  pm.expect(body.meta.routing_calls).to.be.within(0, 2);",
+                  "  if (body.meta.cache_hit) { pm.expect(body.meta.routing_calls).to.eql(0); }",
+                  "});",
+                  "pm.test(\"labels are Saint Louis, MO and Winston Salem, NC\", function () { pm.expect(s.start.label).to.eql(\"Saint Louis, MO\"); pm.expect(s.finish.label).to.eql(\"Winston Salem, NC\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Case P10. Look at: summary.start.label and summary.finish.label show the names the API understood.",
+            "url": {
+              "raw": "{{base_url}}/api/v1/route/?start=st. louis, mo&finish=Winston-Salem, North Carolina",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "route",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "start",
+                  "value": "st. louis, mo"
+                },
+                {
+                  "key": "finish",
+                  "value": "Winston-Salem, North Carolina"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Loose place names: Dallas TX to Phoenix, Arizona, USA",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "var s = body.summary, stops = body.fuel_stops;",
+                  "pm.test(\"fewer than 12 stops, and summary.stops matches the list\", function () { pm.expect(stops.length).to.be.below(12); pm.expect(s.stops).to.eql(stops.length); });",
+                  "pm.test(\"total_fuel_cost equals the sum of the stops' costs, to the cent\", function () {",
+                  "  var cents = stops.reduce(function (a, x) { return a + Math.round(x.cost * 100); }, 0);",
+                  "  pm.expect(Math.round(s.total_fuel_cost * 100)).to.eql(cents);",
+                  "});",
+                  "pm.test(\"gallons equals distance_miles / 10\", function () { pm.expect(Math.abs(s.gallons - s.distance_miles / 10)).to.be.below(0.006); });",
+                  "pm.test(\"first stop is the start\", function () { pm.expect(stops[0].kind).to.eql(\"start\"); });",
+                  "pm.test(\"lowest_possible_fuel_cost is not above total_fuel_cost\", function () { pm.expect(s.lowest_possible_fuel_cost).to.be.at.most(s.total_fuel_cost + 0.005); });",
+                  "pm.test(\"meta is consistent (cache_hit means no routing call)\", function () {",
+                  "  pm.expect(body.meta.routing_calls).to.be.within(0, 2);",
+                  "  if (body.meta.cache_hit) { pm.expect(body.meta.routing_calls).to.eql(0); }",
+                  "});",
+                  "pm.test(\"labels are Dallas, TX and Phoenix, AZ\", function () { pm.expect(s.start.label).to.eql(\"Dallas, TX\"); pm.expect(s.finish.label).to.eql(\"Phoenix, AZ\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Case P11. Look at: no comma, a spelled-out state and a trailing USA are all accepted; the labels are tidy.",
+            "url": {
+              "raw": "{{base_url}}/api/v1/route/?start=Dallas TX&finish=Phoenix, Arizona, USA",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "route",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "start",
+                  "value": "Dallas TX"
+                },
+                {
+                  "key": "finish",
+                  "value": "Phoenix, Arizona, USA"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Errors",
+      "item": [
+        {
+          "name": "Missing finish: invalid_request",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", function () { pm.response.to.have.status(400); });",
+                  "var body = pm.response.json();",
+                  "pm.test(\"standard error body: error.code, message, details only\", function () {",
+                  "  pm.expect(Object.keys(body)).to.eql([\"error\"]);",
+                  "  pm.expect(Object.keys(body.error).sort()).to.eql([\"code\", \"details\", \"message\"]);",
+                  "  pm.expect(body.error.message).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"error.code is invalid_request\", function () { pm.expect(body.error.code).to.eql(\"invalid_request\"); });",
+                  "pm.test(\"details.fields has finish\", function () { pm.expect(body.error.details.fields).to.have.property(\"finish\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Case N01. Look at: 400 with error.code invalid_request and error.details.fields naming finish.",
+            "url": {
+              "raw": "{{base_url}}/api/v1/route/?start=New York, NY",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "route",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "start",
+                  "value": "New York, NY"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Misspelt city: unknown_place with suggestions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", function () { pm.response.to.have.status(400); });",
+                  "var body = pm.response.json();",
+                  "pm.test(\"standard error body: error.code, message, details only\", function () {",
+                  "  pm.expect(Object.keys(body)).to.eql([\"error\"]);",
+                  "  pm.expect(Object.keys(body.error).sort()).to.eql([\"code\", \"details\", \"message\"]);",
+                  "  pm.expect(body.error.message).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"error.code is unknown_place\", function () { pm.expect(body.error.code).to.eql(\"unknown_place\"); });",
+                  "var d = body.error.details;",
+                  "pm.test(\"details name the field and the query\", function () { pm.expect(d.field).to.eql(\"start\"); pm.expect(d.query).to.eql(\"Chicgo, IL\"); });",
+                  "pm.test(\"suggestions include Chicago, IL, at most 5\", function () { pm.expect(d.suggestions).to.include(\"Chicago, IL\"); pm.expect(d.suggestions.length).to.be.at.most(5); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Case N03. Look at: 400 unknown_place; the details carry the field, the query as sent and up to five suggestions, including Chicago, IL.",
+            "url": {
+              "raw": "{{base_url}}/api/v1/route/?start=Chicgo, IL&finish=Houston, TX",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "route",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "start",
+                  "value": "Chicgo, IL"
+                },
+                {
+                  "key": "finish",
+                  "value": "Houston, TX"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Honolulu: outside_coverage",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422\", function () { pm.response.to.have.status(422); });",
+                  "var body = pm.response.json();",
+                  "pm.test(\"standard error body: error.code, message, details only\", function () {",
+                  "  pm.expect(Object.keys(body)).to.eql([\"error\"]);",
+                  "  pm.expect(Object.keys(body.error).sort()).to.eql([\"code\", \"details\", \"message\"]);",
+                  "  pm.expect(body.error.message).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"error.code is outside_coverage\", function () { pm.expect(body.error.code).to.eql(\"outside_coverage\"); });",
+                  "var d = body.error.details;",
+                  "pm.test(\"details name the field and the query\", function () { pm.expect(d.field).to.eql(\"start\"); pm.expect(d.query).to.eql(\"Honolulu, HI\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Case N06. Look at: 422 outside_coverage; the details name the field and the query as sent. Only the lower 48 states and DC are covered.",
+            "url": {
+              "raw": "{{base_url}}/api/v1/route/?start=Honolulu, HI&finish=Los Angeles, CA",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "route",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "start",
+                  "value": "Honolulu, HI"
+                },
+                {
+                  "key": "finish",
+                  "value": "Los Angeles, CA"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Detroit to Buffalo: the road leaves the USA",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422\", function () { pm.response.to.have.status(422); });",
+                  "var body = pm.response.json();",
+                  "pm.test(\"standard error body: error.code, message, details only\", function () {",
+                  "  pm.expect(Object.keys(body)).to.eql([\"error\"]);",
+                  "  pm.expect(Object.keys(body.error).sort()).to.eql([\"code\", \"details\", \"message\"]);",
+                  "  pm.expect(body.error.message).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"error.code is route_leaves_usa\", function () { pm.expect(body.error.code).to.eql(\"route_leaves_usa\"); });",
+                  "pm.test(\"details.miles_abroad within 2% of 252\", function () { pm.expect(body.error.details.miles_abroad).to.be.within(252 * 0.98, 252 * 1.02); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Case N11. Look at: 422 route_leaves_usa; details.miles_abroad is about 252, the road runs through Canada.",
+            "url": {
+              "raw": "{{base_url}}/api/v1/route/?start=Detroit, MI&finish=Buffalo, NY",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "route",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "start",
+                  "value": "Detroit, MI"
+                },
+                {
+                  "key": "finish",
+                  "value": "Buffalo, NY"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Los Angeles to Seattle: no fuel plan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422\", function () { pm.response.to.have.status(422); });",
+                  "var body = pm.response.json();",
+                  "pm.test(\"standard error body: error.code, message, details only\", function () {",
+                  "  pm.expect(Object.keys(body)).to.eql([\"error\"]);",
+                  "  pm.expect(Object.keys(body.error).sort()).to.eql([\"code\", \"details\", \"message\"]);",
+                  "  pm.expect(body.error.message).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"error.code is no_fuel_plan\", function () { pm.expect(body.error.code).to.eql(\"no_fuel_plan\"); });",
+                  "pm.test(\"gap starts at mile 0\", function () { pm.expect(body.error.details.gap_start_mile).to.eql(0); });",
+                  "pm.test(\"details.gap_miles within 2% of 886\", function () { pm.expect(body.error.details.gap_miles).to.be.within(886 * 0.98, 886 * 1.02); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Case N12. Look at: 422 no_fuel_plan; the fuel list has no station on the way, so details give where the gap starts (mile 0) and its length, about 886 miles.",
+            "url": {
+              "raw": "{{base_url}}/api/v1/route/?start=Los Angeles, CA&finish=Seattle, WA",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "route",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "start",
+                  "value": "Los Angeles, CA"
+                },
+                {
+                  "key": "finish",
+                  "value": "Seattle, WA"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -72,7 +72,7 @@ The **From** column says where a requirement comes from: **Assignment** (stated 
 
 ## 5. Non-functional requirements
 
-The speed targets come from measurements on a 2,800-mile route. They will be replaced with figures from the finished API.
+The speed targets were set from design measurements on a 2,800-mile route. The finished API meets them: the measured figures are in the README and in section 14 of the architecture document.
 
 | ID | Requirement | Tier | From |
 |---|---|---|---|
@@ -109,7 +109,7 @@ The assignment is silent on these. Each is stated in the README and, where it af
 | D-6 | Which price applies when a station is listed several times? | Every row in the CSV is true, so the truck buys at the cheapest listing. Where two listings tie, the first in the file gives the station its name. | The 597 stations with more than one price differ by a median of 9 cents. Taking the lowest and not the average moves the average station price by half a cent. |
 | D-7 | How much fuel must be left at the finish? | None. The plan buys only enough to arrive. | — |
 | D-8 | Does the detour to a station use fuel? | No. Stations are treated as being on the route. | With D-5 the detour is at most 5 miles each way. |
-| D-9 | How many stops are too many? | Each stop is charged $10 when the plan is chosen, to stand for the time it takes. The $10 is never added to the fuel bill. Without it, the cheapest plan stops for less than a gallon to save a few cents. | New York to Los Angeles, lowest possible fuel bill: $854.65 with 17 stops, the smallest for 0.6 gallons. At $10 a stop: $865.93 with 7 stops, the smallest for 25.8 gallons. That is 1.3% more fuel money for 10 fewer stops. |
+| D-9 | How many stops are too many? | Each stop is charged $10 when the plan is chosen, to stand for the time it takes. The $10 is never added to the fuel bill. Without it, the cheapest plan stops for less than a gallon to save a few cents. | New York to Los Angeles, lowest possible fuel bill: $854.65 with 17 stops, the smallest for 0.6 gallons. At $10 a stop: $865.93 with 7 stops, the smallest for 25.8 gallons. That is 1.3% more fuel money for 10 fewer stops. These are the design measurements; the finished API gives $855.95 with 19 stops, and $867.27 with 7. |
 | D-10 | Which stations along the route are worth considering? | A station is skipped if another within 10 miles along the route is cheaper, or equally cheap and earlier. This never hides a valid plan: whether a plan exists is decided on every station, and the full list is used if the shorter one has none. When the stop cost is zero no station is skipped, so the bill is the true lowest. | This removes about three quarters of the candidates (363 to 98 on New York to Los Angeles) and raises the fuel bill by 0.2% at most. |
 | D-11 | How wide is the search for stations? | 5 miles either side of the road (see D-5). | Widening to 10 miles lowers the bill by less than 1% and admits stations twice as far from the road. |
 | D-12 | Which free routing API? | The OSRM public server, which needs no API key, with a second server running the same software for the one retry. Rejected: openrouteservice, which needs an account and key and has maintenance announced for the deadline day. | New York to Los Angeles returned in 1.6 seconds. The second server gave the identical route. |
