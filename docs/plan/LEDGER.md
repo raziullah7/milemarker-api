@@ -52,3 +52,4 @@ Repo: this repository (commit identity must be `Razi Ullah <50240668+raziullah7@
 - Phase 6 BASE: b5a5647
 - Phase 6 task 6K (Docker) reviewed by the controller: Dockerfile, entrypoint, .dockerignore, Compose read in full. Controller ran 9 live cases against the container (9 passed), the suite in a container (348 passed) and on the host (348 passed); 6,626 station rows after a restart. Live routing calls so far: about 83 of 100.
 - **Phase 6: complete (commit 77860c2).** Gate 6 passed.
+- Phase 7 started. Two Sonnet builders in parallel: 7P (Postman collection; one full Newman run allowed) and 7R (README; architecture sections 4 and 14). Briefs: briefs/phase7-P-postman.md, briefs/phase7-R-readme.md.
