@@ -59,3 +59,11 @@ Repo: this repository (commit identity must be `Razi Ullah <50240668+raziullah7@
 - Phase 8 started (controller only).
 - Phase 8 done by the controller: tracked files searched; fresh local clone started with one command and answered; suite 348 passed in a container and from source, lint clean; public repository `raziullah7/milemarker-api` created and `main` pushed; a clone from GitHub started and answered; restart over existing data checked. Section 7 of `docs/test-cases.md` filled in. Live routing calls: about 94 of 100.
 - **Phase 8: complete.** Gate 8 passed. Open: the Loom and the submission, which are the candidate's.
+
+## Part 2
+
+- 2026-11-18 The user asked for everything that was deferred (CI, an OpenAPI page, a map page, Redis), a Makefile, production-level quality and independent QA against everything. Their answers: no hosting; the web app is a viewer only, with a 3D globe and animation; install GNU make. Part 2 of `PLAN.md` approved the same day.
+- Ruling: `main` is tagged `v1.0.0` (pushed) and stays a valid submission; all Part 2 work is on the branch `next`, merged to `main` only at a passed gate.
+- Ruling: cut lines. Redis and two workers are dropped if Gate 11 has not passed by Thursday 19 Nov, noon. The globe falls back to a flat map if Gate 12 has not passed by Thursday 8 pm.
+- Phase 9 started. BASE: 8f9609a (`v1.0.0`). Controller: GNU make 4.4.1 installed with winget; dependencies added (`redis`, `drf-spectacular`; dev: `pytest-cov`, `mypy`, `pip-audit`); `drf-spectacular` 0.30.0 tried on Django 6.1.3 and DRF 3.18.3 and works (details in `PHASE-9.md`).
+- Phase 9 agents dispatched: QA-0a (delivery audit) and QA-0b (code changed since the Phase 5 review), both Opus, both on a frozen copy of `v1.0.0` outside the repository; 9S (Opus) applying the spec changes listed in `PHASE-9.md`. 9T (use cases and test cases) starts after the controller has checked 9S.

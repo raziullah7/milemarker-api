@@ -7,16 +7,21 @@ dependencies = [
     "dj-database-url>=3.1.2",
     "django>=6.1,<6.2",
     "djangorestframework>=3.18,<3.19",
+    "drf-spectacular>=0.30.0",
     "gunicorn>=27.0.1",
     "httpx>=0.28.1",
     "numpy>=2.5.5",
     "psycopg[binary]>=3.3.9",
+    "redis>=8.1.0",
     "scipy>=1.18.1",
 ]
 
 [dependency-groups]
 dev = [
+    "mypy>=2.4.1",
+    "pip-audit>=2.10.1",
     "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
     "pytest-django>=4.14.0",
     "pytest-socket>=0.8.1",
     "ruff>=0.17.5",

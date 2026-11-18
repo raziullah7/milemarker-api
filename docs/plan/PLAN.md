@@ -262,3 +262,285 @@ Each goes into a spec in Phase 1.
 | 20 | Coordinates as input (FR-17) | Dropped to nice-to-have. Nothing in the design can decide whether a bare coordinate is inside the lower 48. |
 | 21 | Test independence, and NFR-9 | The brute-force check scores each subset with the LP solver, so it shares no code with the routine under test. NFR-9 is reworded to "Docker, or uv with a running PostgreSQL". |
 
+---
+
+Approved 18 Nov 2026, after Part 1 closed. Part 1 above is unchanged and stays the record of Phases 1 to 8.
+
+# Part 2: production readiness, map viewer, CI
+
+
+## Context
+
+Part 1 (Phases 1 to 8) is finished: the API works, 348 tests pass, and `main` is public at `github.com/raziullah7/milemarker-api`. It is a valid submission today.
+
+Four things were deferred and are now wanted: CI, an OpenAPI page, a map page, and Redis. You also asked for a Makefile, production-level quality, and independent QA agents against everything. Two gaps from Part 1 are closed here as well: the Docker files, README, Postman collection and the twelve post-review fixes were only ever reviewed by me.
+
+**Deadline:** Friday 20 Nov 2026, 8 pm. About 50 hours from now, and the Loom still has to be recorded.
+
+**Goal:** the same API, hardened to a standard that is safe to put behind a TLS terminator and run; a map viewer that looks excellent; CI; and every part reviewed by an agent that did not write it.
+
+**Spec:** `docs/requirements.md` and `docs/backend-architecture.md`, updated in Phase 9 before any code, as in Part 1.
+
+## Your decisions
+
+| Question | Your answer |
+|---|---|
+| Deploy to a public URL? | No. Ready to deploy, runs anywhere with Docker. |
+| The web app | A map viewer only, as a separate React app. It must look really good: a 3D globe that flies into the route, with the details appearing as animation. |
+| `make` on this machine | Install GNU make with winget. |
+
+## How `main` stays safe
+
+- Today's `main` is tagged `v1.0.0` and the tag is pushed. That is the fallback submission.
+- All work happens on a branch, `next`. It is pushed to GitHub so CI can run on it.
+- `next` is merged into `main` only at a gate that has passed. `main` is a valid submission at every moment.
+- **Cut lines.** If the Redis and two-worker work has not passed its gate by Thursday noon, it is dropped and the rest goes ahead on one worker. If the globe has not passed by Thursday 8 pm, the viewer ships as a flat map with the same data. Friday is for the Loom and for fixes found while recording, nothing new.
+
+## Target architecture
+
+| Service | What it is | Host port | Role |
+|---|---|---|---|
+| `db` | `postgres:17` | 5432, local only | Seed data |
+| `redis` | Redis, no persistence, capped memory | none | The two caches and the rate-limit counters, shared by every worker |
+| `setup` | The API image, runs once | none | `migrate`, then `load_stations`, then exits |
+| `api` | gunicorn, 2 workers × 4 threads | **none** | `/api/v1/...`; starts after `setup` succeeds |
+| `web` | nginx, unprivileged | **8000** | Serves the viewer at `/`, passes `/api/` to `api`, compresses responses |
+| `test` | The test image | none | The suite in a container, as now |
+
+- **Same origin, no CORS.** The viewer calls `/api/v1/route/`. `http://127.0.0.1:8000/api/v1/route/` keeps working for the README, Postman and the live-check script; it now passes through nginx.
+- **If Redis is down, the API still answers.** A small cache class falls back to each process's own memory, which is exactly today's behaviour, and logs one warning. No client ever sees a 500 because of Redis.
+- **Rate limit behind the proxy.** nginx replaces `X-Forwarded-For` with the address it saw, and the API trusts exactly one proxy. The API has no host port, so the bypass found in Part 1 stays closed. A test forges the header to prove it.
+- **Cached answers cannot go stale.** The cache now outlives the process, so the answer's key includes a fingerprint of the station data and a version number.
+- **New addresses:** `/api/v1/health/`, `/api/v1/schema/` (OpenAPI), `/api/v1/docs/` (Swagger page), and the viewer at `/?start=…&finish=…`.
+- **A local stand-in for the routing server.** `scripts/fake_osrm.py` serves the 17 saved real roads. With it, the whole stack, Newman and the viewer's browser tests run with no call to the public servers.
+
+## What "production level" means here
+
+| Built | Not built, with the reason |
+|---|---|
+| Settings from the environment (`DJANGO_ALLOWED_HOSTS`, `REDIS_URL`, `ROUTING_SERVERS`, `WEB_CONCURRENCY`, `LOG_LEVEL`); a fresh clone still needs no `.env` | TLS, HSTS, a secrets manager: there is no deployment. The README says where TLS would end. |
+| `manage.py check --deploy` clean in CI; each silenced check has a written reason | Separate liveness and readiness endpoints: nothing acts on the difference. One health endpoint. |
+| Security middleware and headers; host checking on; no key in code | Metrics, tracing, JSON logs, error tracking: no operator to read them. |
+| A health endpoint; health checks and start order in Compose; graceful shutdown that does not cut a request mid routing call | A lock against two identical new requests at once: it would let 8 waiting threads tie up the server to save one free routing call. Stays a written known limit. |
+| Multi-stage image holding only what runs; non-root; nginx in front of gunicorn | Kubernetes manifests, autoscaling, a CDN. |
+| Response compression (the map is 133 KB of JSON) | Strict typing of the Django layer: the stubs do not yet declare support for Django 6.1. |
+| Logs with time, level and a request ID; one line per planned trip | |
+| CI: lint, format, types on the pure modules, tests with coverage and a floor, deploy check, migration check, image build, end-to-end on the stand-in routing server, dependency audit; Dependabot; pre-commit | |
+| A licence file (MIT, for the code; the data files keep their own terms) | |
+
+## Phases
+
+Each phase gets its `PHASE-N.md` written just before it starts and closed with a Result section, as in Part 1. Agents never commit; I read every diff, run every check myself, and make every commit.
+
+### Phase 9: Preparation, specs, baseline audit
+
+**Delivers**
+- Tag `v1.0.0`, branch `next`, this plan appended to `docs/plan/PLAN.md` as Part 2.
+- GNU make installed. All new Python dependencies added in one go by me, so no agent touches `pyproject.toml` afterwards.
+- A short trial of `drf-spectacular` on Django 6.1 and DRF 3.18 (it declares support only up to 6.0 and 3.17). If it fails, the OpenAPI document is written by hand and served with the same Swagger page.
+- Both specs updated first: the four deferred requirements promoted, the new ones added, FR-18 reworded (the viewer is an address, `/?start=…&finish=…`, not a link added to the response, so the response contract does not change), new decisions recorded.
+- New test cases written into `docs/test-cases.md` before any code, with inputs and expected outputs.
+- **QA-0, two independent read-only audits of what exists now:** the delivery side (settings, Docker files, README, Postman collection, the repository as a public artifact), and all code changed since the Phase 5 review.
+
+**Done when** the trial's result is recorded; every audit finding has a ruling (fix in a named phase, or a reason it stands); every new requirement ID appears in a test case.
+
+### Phase 10: Test harness, Makefile, CI
+
+**Delivers**
+- The stand-in routing server, and `ROUTING_SERVERS` read from the environment.
+- A second Compose file for end-to-end runs: the stand-in in place of the public servers, and the API on a network with no route out.
+- The `Makefile` (targets below), pre-commit hooks, Dependabot.
+- GitHub Actions on every push and pull request: the backend checks listed above. Web checks are added in Phase 12.
+
+**Done when** CI is green on `next`; the end-to-end run passes Newman's Demo folder and the live-check cases that have saved roads; the stand-in's request count matches the expected routing calls; `make test`, `make lint` and `make up` work on this machine.
+
+### Phase 11: Backend runtime (the riskiest change, so it goes early)
+
+**Delivers**
+- Redis with the fallback; two workers; `gunicorn.conf.py`; the `setup` service; settings from the environment; middleware; the health endpoint; logging; the multi-stage image; health checks; graceful shutdown.
+- The OpenAPI schema and Swagger page, with the error shape and examples documented, and a test that the committed schema matches the code.
+- Every fix ruled into this phase by QA-0.
+
+**Done when**
+- The full suite passes, plus Redis tests against a real Redis and against a dead address (timed, so a dead Redis cannot stall a request).
+- From `down -v`, `docker compose up --build` with no `.env` starts everything.
+- Twenty repeats of one trip are all cache hits across both workers.
+- Drill: stop Redis, requests still return 200 with one warning logged; start it, the shared cache returns.
+- `check --deploy` is clean.
+- **QA-1 (independent, adversarial):** tries to break the cache and the rate limit, and deletes the fallback to check the tests notice. Findings fixed, then re-reviewed by a fresh agent, not by me.
+
+### Phase 12: The map viewer and the front door
+
+The stack, the storyboard and the checks are in "The viewer" at the end of this part. The builder uses the `frontend-design` skill.
+
+**Delivers**
+- A one-hour trial of the globe, the fly-in and the route reveal, before the full build.
+- `web/`: the viewer, React + TypeScript (strict) + Vite, built into the nginx image.
+- nginx: serves the viewer, passes `/api/` through, compresses, sets security headers, turns its own upstream errors into the API's JSON error shape.
+- Compose: port 8000 moves from `api` to `web`.
+- CI: web lint, type check, unit tests, build, and a headless browser run against the end-to-end stack.
+
+**Done when**
+- Newman passes through nginx; the 61st request in a minute with forged forwarded addresses gets 429; responses are compressed; with `api` stopped, the answer is JSON, not an HTML error page.
+- The viewer's browser tests pass, including an accessibility check, a no-WebGL fallback and reduced motion.
+- I have watched the animation in a browser on the running stack and recorded what I saw.
+- **QA-2 (independent):** frontend code review and a keyboard-only walk through every state. **QA-3 (independent):** security review of nginx, Compose, settings and the image. Findings fixed and re-reviewed by a fresh agent.
+
+### Phase 13: Documents and the stranger test
+
+**Delivers** README (viewer, docs page, Makefile, CI badge, the new architecture, known limits rewritten); architecture and requirements brought in line with the code; `docs/use-cases.md` and `docs/test-cases.md` with actual results; the Postman collection gains the health and schema requests.
+
+**Done when** **QA-4 (independent):** an agent given only the README and the branch's address clones it into an empty folder and follows it literally; every command works and every number matches.
+
+### Phase 14: Final verification and merge (controller)
+
+**Delivers** an evidence table for every new acceptance check; `next` merged into `main` and pushed; the final report.
+
+**Done when** a clone taken from GitHub starts with one command and passes the end-to-end run; CI is green on `main`; one real New York to Los Angeles request through the full stack, and the viewer drawing it; nothing uncommitted.
+
+## Agents
+
+| Phase | Task | Model |
+|---|---|---|
+| 9 | New test cases from the updated specs | Opus |
+| 9 | QA-0a: audit of the delivery side | Opus |
+| 9 | QA-0b: review of code changed since the Phase 5 review | Opus |
+| 10 | Stand-in routing server and end-to-end Compose file | Sonnet |
+| 10 | Makefile, CI, pre-commit, Dependabot | Sonnet |
+| 11 | Backend runtime | Opus |
+| 11 | OpenAPI schema and Swagger page | Sonnet |
+| 11 | QA-1: adversarial review of cache, rate limit, start-up | Opus |
+| 12 | The viewer | Opus |
+| 12 | nginx, Compose port move, proxy tests | Sonnet |
+| 12 | QA-2: frontend review and walkthrough | Opus |
+| 12 | QA-3: security review of the whole stack | Opus |
+| 13 | Documents | Sonnet |
+| 13 | QA-4: the stranger test | Sonnet |
+| any | A fresh reviewer for each fix wave | Opus |
+
+Parallel agents never share a file. `config/settings.py`, `pyproject.toml`, `uv.lock` and `docker-compose.yml` each have one owner per phase.
+
+## Makefile
+
+`make help` lists every target. Each is one portable command, so it works under Git Bash, PowerShell and Linux. The README shows the plain command beside each, for anyone without make.
+
+| Target | Does |
+|---|---|
+| `up`, `down`, `logs`, `ps` | The Compose stack |
+| `dev` | Database and Redis in Docker, then the API from source with reload |
+| `web-dev` | The viewer's dev server, passing `/api` to the API |
+| `test`, `test-slow`, `test-docker`, `coverage` | The suite: from source, the slow exactness test, in a container, with coverage |
+| `lint`, `format`, `typecheck`, `check` | Ruff, formatting, types, and all of them plus the tests |
+| `e2e` | The end-to-end stack on the stand-in routing server, then Newman and the browser tests |
+| `live` | The live-check script against the running stack (uses the public routing server) |
+| `load`, `migrate`, `shell` | Station load, migrations, Django shell |
+| `clean` | Stop everything and delete the volumes |
+
+## Rules every phase inherits
+
+- Everything in Part 1's rules still holds: PostgreSQL only, no API key, no secret committed, one routing call per new trip, no test reaches beyond this machine.
+- A fresh clone starts with one `docker compose up --build` and no `.env`.
+- The response of `GET /api/v1/route/` does not change. The independent verifier and the regression pins must pass untouched.
+- **Public routing calls: six remain of the hundred, and that is the whole allowance for Part 2.** Everything else runs on the stand-in.
+- All documents stay under `docs/`. Commits use the repository's own identity and end with the Claude co-author line, as before.
+
+## Critical files
+
+- Changed: `config/settings.py`, `config/urls.py`, `trips/services/planner.py`, `trips/views.py`, `stations/index.py`, `Dockerfile`, `docker-compose.yml`, `tests/conftest.py`, `pyproject.toml`, `README.md`, the specs.
+- New: `config/cache.py`, `gunicorn.conf.py`, `trips/schema.py`, `scripts/fake_osrm.py`, `docker-compose.e2e.yml`, `Makefile`, `.github/workflows/ci.yml`, `.github/dependabot.yml`, `.pre-commit-config.yaml`, `LICENSE`, `web/**`.
+- Removed: `docker/entrypoint.sh` (its work moves to the `setup` service and `gunicorn.conf.py`).
+- Reused as they are: `tests/verify.py` (the independent verifier), `scripts/live_check.py`, `tests/fixtures/roads/*.json.gz`, `tests/test_regression.py`.
+
+Known traps, from the design review: the catch-all address in `trips/urls.py` swallows any route added after it; `tests/conftest.py` clears the cache in a way that would empty a real Redis, so the suite is pinned to the in-memory cache and Redis tests use their own database; one existing test forbids `DJANGO_ALLOWED_HOSTS` and is reversed on purpose; the API image must not pick up `web/node_modules`.
+
+## Verification
+
+| Level | What it proves | Routing |
+|---|---|---|
+| Unit and integration, 348 existing plus new | Nothing regressed; new modules do what they say | none |
+| Redis tests | Shared cache works; a dead Redis never stalls or fails a request | none |
+| Proxy tests | Rate limit cannot be bypassed; errors stay JSON; compression on | none |
+| End-to-end stack | The whole thing through nginx: Newman, live-check cases, browser tests | stand-in |
+| Viewer in a real browser, by me | The animation actually plays and looks right | stand-in |
+| CI | All of the above on a clean machine, on every push | stand-in |
+| Fresh clone from GitHub | A stranger can run it from the README | stand-in, then one real call |
+| Independent reviews QA-0 to QA-4 | Faults the builders and I did not see | none |
+
+## What approving this covers
+
+- **On GitHub:** pushing the tag `v1.0.0`, pushing the branch `next`, CI running on it, and merging to `main` at passed gates. Dependabot will open pull requests on the repository once its file is merged.
+- **On this machine:** installing GNU make for your user with `winget install ezwinports.make`.
+- **Packages:** `redis`, `drf-spectacular`, `pytest-cov`, `mypy` and `pip-audit` from PyPI; `react`, `react-dom`, `vite`, `typescript`, `maplibre-gl`, `motion`, `vitest`, Testing Library, Playwright, the axe accessibility scanner and ESLint from npm; the Redis, nginx, Node and Playwright images.
+- **Other people's servers, from the visitor's browser:** the viewer loads map tiles from OpenFreeMap and night imagery from NASA, both free and keyless, and the Swagger page loads its script from a pinned CDN address. If the tile servers are unreachable the viewer falls back to its built-in outlines.
+- **A licence file:** MIT, in the name Razi Ullah, covering the code only.
+- **Changing two written decisions:** host checking is switched on, and the API stops being a single process.
+
+## Not in this plan
+
+Hosting it anywhere; TLS; a trip-planning form in the web app (you chose the viewer only); accounts or saved trips.
+
+## Left for you
+
+- Record the Loom once Phase 14 has passed, or at any point from `v1.0.0` if you would rather not wait.
+- Send both links before Friday 8 pm.
+
+---
+
+## The viewer
+
+Researched against primary sources on 18 Nov 2026 (versions checked on npm that day; terms read on each provider's own page). Nothing here needs a key or an account.
+
+### Stack
+
+| Part | Choice | Why |
+|---|---|---|
+| Renderer | MapLibre GL JS 6 (open source), globe projection | The only keyless option that goes from a globe in space down to readable street maps in one continuous zoom, and can reveal a 5,600-point route without re-sending it each frame. About 455 KB compressed. |
+| From space | NASA night-lights imagery (Black Marble, public data) with MapLibre's atmosphere, on a black page | The striking far-out look. Fades out as the camera comes down. |
+| Up close | OpenFreeMap's dark vector style (free, no key, no view limits) | Roads and place names once the camera is low. |
+| If the tile servers are unreachable | A built-in outline style: land and US state lines from Natural Earth (public domain), bundled in the app | The globe and the route still draw with no map server at all. Also what the browser tests use, so they never depend on someone else's server. |
+| Interface animation | Motion (MIT) | One clock drives the camera, the route, the counters and the scrubber together. |
+| App | React 19 + TypeScript strict + Vite; no router, no state library, no UI kit | One screen. |
+
+Rejected: CesiumJS (four times the size, and its default imagery needs an account); Mapbox, MapTiler, Google 3D tiles and CARTO (all need a key now); deck.gl's own globe (cannot zoom to street level); a Protomaps self-hosted extract (size unverified, more than a fallback needs).
+
+### What the page does
+
+- A trip comes from the address: `/?start=New York, NY&finish=Los Angeles, CA&stop_cost=10`, the same parameters as the API.
+- Opened bare, it shows the slowly turning globe and three example trips to click. There is no form; you chose a viewer.
+- A side panel holds the totals, the comparison with the lowest possible fuel bill, any warning, and one card per stop (name, city, price, gallons, cost, mile).
+- Every API error has its own state in the panel. An unknown place shows the API's suggestions as links that reopen the page corrected.
+
+### The animation (about 16 seconds, with Skip and Replay)
+
+| Beat | Time | What happens |
+|---|---|---|
+| 1 | 0–3 s | The night-side globe turns slowly under an atmosphere glow. The trip's title fades in. |
+| 2 | 3–8 s | The camera flies from space down to the route, tilting as it arrives. The night lights give way to the road map. The summary cards slide in one after another. |
+| 3 | 8–15 s | The route draws itself along the road with a soft glow and a bright moving head. The distance counter runs with it. |
+| 4 | during 3 | As the head reaches each fuel stop, its marker pops in, its card appears, and the fuel-cost counter adds that stop's cost. |
+| 5 | 15–16.5 s | The camera settles. The finish marker pulses. A scrubber appears: drag it to replay any moment. |
+| after | | Click a stop's card and the camera flies to it. Any mouse or wheel input during the intro cancels it and hands over control. |
+
+The route is revealed by moving a colour boundary along the line (one cheap update per frame), not by rebuilding the line. Stop timing uses each stop's position along the drawn line, not its mile marker, because the two differ on a projected map.
+
+### Robustness
+
+- **Reduced motion:** if the visitor's system asks for it, the page opens on the finished state with no fly-in.
+- **No WebGL2:** a static drawing of the route with the same panel, and a sentence saying why.
+- **Slow graphics:** pixel density capped, terrain off, three small updates per frame.
+- **Attribution:** OpenFreeMap, OpenMapTiles, OpenStreetMap and NASA GIBS, always visible.
+
+### How it is proven
+
+| Check | How |
+|---|---|
+| The animation's maths (progress, stop timing, counters) | Unit tests on pure functions |
+| The panel in every state: loading, a plan, each error, suggestions | Component tests with the map replaced by a stand-in |
+| It really draws | Headless browser against the end-to-end stack: the route's pixels are sampled on the canvas; the animation is run to its end; screenshots of the finished state compared within a tolerance |
+| Accessibility | An automated accessibility scan and a keyboard-only pass |
+| Fallbacks | Browser runs with WebGL off and with reduced motion on |
+| It looks right | I watch it in a real browser on this machine and say what I saw. Independent reviewer QA-2 does the same. |
+
+### First step of Phase 12: a one-hour trial
+
+Before the full build, a throwaway page proves the three risky things on this machine: the globe with the night imagery and atmosphere, the fly-in, and the route reveal at full size holding a smooth frame rate. Several details could not be confirmed from documentation alone (for example whether the area around the globe is transparent, for a star field). If the trial fails, the cut line applies: a flat map with the same panel and the same route reveal.
