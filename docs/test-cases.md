@@ -123,7 +123,7 @@ These tests need the database.
 | GE-14 | UC-09 | Recorded Detroit–Buffalo road, real borders | ≈ 252 miles, pass within 2% |
 | GE-15 | UC-09 | Recorded Detroit–Boston road, real borders | ≈ 234 miles, pass within 2% |
 | GE-16 | UC-09 | Recorded roads that stay in the USA: Boston–Washington, Boston–Seattle, Chicago–Houston, Dallas–Houston, Detroit–Port Huron, El Paso–Del Rio, Houlton–Madawaska, International Falls–Baudette, Key West–Miami, Laredo–Brownsville, Montauk–New York, New York–Los Angeles, San Diego–Calexico, Seattle–Miami, Seattle–Blaine | Each 25 miles or less, so none is rejected (measured in design: 10 at most) |
-| GE-17 | UC-09 | `load_borders("data/borders.json")` | Two entries, Canada and Mexico, each with at least one outline |
+| GE-17 | UC-09 | `load_borders("data/borders.json")` | Two entries, `CAN` and `MEX`, each one outline of `[lng, lat]` points |
 
 ### 2.5 Station search: `trips/services/corridor.py`
 
@@ -147,7 +147,7 @@ All cases use the equator road (1,000 miles), radius 5 and thinning 10 unless st
 | CO-14 | UC-01 | (100, on, 3.00, 9), (105, on, 3.00, 1) | `[9]`: equally cheap and earlier, whatever the ID |
 | CO-15 | UC-01 | (100, on, 3.00, 1), (110, on, 3.10, 2); then the second at mile 110.5 | `[1]` (exactly 10 miles counts as within); then `[1, 2]` |
 | CO-16 | UC-01 | (100, on, 3.00, 1), (108, on, 3.05, 2), (116, on, 3.08, 3) | `[1]`: station 3 is dropped because station 2 is within 10 miles and cheaper, even though station 2 is dropped too |
-| CO-17 | UC-01 | Recorded New York–Los Angeles road, real CSV loaded, start station excluded | ≈ 363 candidates before thinning and ≈ 98 after, each pass within 2% |
+| CO-17 | UC-01 | Recorded New York–Los Angeles road, real CSV loaded, start station excluded | ≈ 363 candidates before thinning and ≈ 98 after, each pass within 5%: these are small counts, and the finished rules for city positions and marker scaling move a station or two across a limit |
 
 ### 2.6 Fuel plan: `trips/services/fuel.py`
 

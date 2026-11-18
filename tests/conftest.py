@@ -58,3 +58,36 @@ def _empty_cache():
     cache.clear()
     yield
     cache.clear()
+
+
+@pytest.fixture(scope="session")
+def real_index():
+    """Every station in the supplied CSV, as the loader would place it, built without the
+    database. Read once for the whole test run."""
+    from django.conf import settings
+
+    from stations import places
+    from stations.management.commands.load_stations import (
+        cheapest_listing_per_station,
+        read_rows,
+        station_fields,
+    )
+    from stations.types import StationInfo, build_index
+
+    stations = []
+    for row in cheapest_listing_per_station(read_rows(settings.STATIONS_CSV)):
+        position = places.locate_city(row["City"], row["State"])
+        if row["State"] in places.COVERED_STATES and position is not None:
+            fields = station_fields(row)
+            fields.pop("rack_id")
+            stations.append((StationInfo(**fields), *position))
+    return build_index(stations)
+
+
+@pytest.fixture
+def use_real_stations(real_index, monkeypatch):
+    """Make get_index() return the real stations for one test, without touching the database."""
+    from stations import index
+
+    monkeypatch.setattr(index, "_index", real_index)
+    return real_index
