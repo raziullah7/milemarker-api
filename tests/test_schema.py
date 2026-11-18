@@ -32,8 +32,6 @@ HEALTH = "/api/v1/health/"
 COMMITTED = Path(settings.BASE_DIR) / "docs" / "openapi.yaml"
 REGENERATE = "uv run python manage.py spectacular --file docs/openapi.yaml"
 
-# Sent by nginx, not by the API: not in trips/errors.py, but on the route's 503.
-PROXY_CODES = {"api_unavailable": 503}
 # Described in the document's opening text, not on the route (row 18 of PHASE-9).
 OPENING_TEXT_CODES = {"not_found", "method_not_allowed"}
 
@@ -250,7 +248,7 @@ def test_hs14_the_error_responses(document):
         "429": {"rate_limited"},
         "500": {"internal_error"},
         "502": {"routing_unavailable"},
-        "503": {"stations_not_loaded", "api_unavailable"},
+        "503": {"stations_not_loaded"},
     }
     for status, codes in expected.items():
         response = route["responses"][status]
@@ -258,8 +256,7 @@ def test_hs14_the_error_responses(document):
         assert set(error["properties"]["code"]["enum"]) == codes, status
         assert {e["value"]["error"]["code"] for e in examples_of(response).values()} == codes
 
-    assert "proxy" in route["responses"]["503"]["description"]
-    assert "proxy" in json.dumps(document["components"]["schemas"]).lower()
+    assert "api_unavailable" not in json.dumps(document)
 
     opening = document["info"]["description"]
     for code in OPENING_TEXT_CODES:
@@ -298,8 +295,6 @@ def test_every_code_in_the_error_table_is_documented(document):
         error = error_object(document, response)
         assert code in error["properties"]["code"]["enum"], code
         assert code in {e["value"]["error"]["code"] for e in examples_of(response).values()}, code
-    for code, status in PROXY_CODES.items():
-        assert code in json.dumps(route["responses"][str(status)])
 
 
 def test_every_example_fits_its_schema_and_its_status(document):
@@ -316,9 +311,7 @@ def test_every_example_fits_its_schema_and_its_status(document):
                     count += 1
                     if "error" in example["value"]:
                         code = example["value"]["error"]["code"]
-                        assert errors.STATUS_FOR_CODE.get(code, PROXY_CODES.get(code)) == int(
-                            status
-                        )
+                        assert errors.STATUS_FOR_CODE[code] == int(status)
     assert count >= 14
 
 

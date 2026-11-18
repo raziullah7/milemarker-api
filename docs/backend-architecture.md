@@ -17,9 +17,6 @@ At request time the API makes **one** call to a routing service to get the road.
 GET /api/v1/route/?start=New York, NY&finish=Los Angeles, CA
  │
  ▼
-nginx              the front door: sets X-Forwarded-For and X-Request-ID, passes the request on
- │
- ▼
 API layer          check the input has the right shape
  │
  ▼
@@ -35,14 +32,11 @@ Business layer     plan_trip()
  │   9. build the answer, store it in the cache
  ▼
 API layer          turn the answer into JSON
- │
- ▼
-nginx              compress the answer on its way out
 ```
 
 Everything that can be known before the routing call is checked before it. The database is **not** on this path. It is read once per process, when the stations are loaded into memory (section 6).
 
-nginx is the only way in: the API has no published port (section 18). With `REDIS_URL` set, the cache in steps 3, 5 and 9 is Redis, a service on the stack's own network, shared by every worker; if Redis cannot be reached, each process uses its own memory (section 10).
+The API is reached directly, on the port it publishes on `127.0.0.1` (section 18). With `REDIS_URL` set, the cache in steps 3, 5 and 9 is Redis, a service on the stack's own network, shared by every worker; if Redis cannot be reached, each process uses its own memory (section 10).
 
 ## 3. Layers and what each may do
 
@@ -68,10 +62,11 @@ In Django terms the "controller" is the **view**. Patterns used, by their usual 
 ```text
 milemarker-api/
 ├── manage.py, pyproject.toml, uv.lock, .python-version, .env.example, README.md
-├── Dockerfile, docker-compose.yml, .dockerignore
-├── docker/
-│   └── entrypoint.sh          container start: migrate, load_stations, then gunicorn
-├── config/                    settings.py, urls.py, wsgi.py
+├── Dockerfile, docker-compose.yml, docker-compose.e2e.yml, .dockerignore
+├── Makefile, gunicorn.conf.py, .pre-commit-config.yaml
+├── .github/workflows/ci.yml   CI
+├── config/                    settings.py, urls.py, wsgi.py, cache.py (Redis and its fallback),
+│                              logs.py (log lines and request IDs)
 ├── stations/                  the data side
 │   ├── exceptions.py          the base error, and the place and station errors
 │   ├── sphere.py              distance maths on a sphere
@@ -84,6 +79,9 @@ milemarker-api/
 ├── trips/                     the request side
 │   ├── exceptions.py          the trip errors
 │   ├── urls.py, views.py, serializers.py, errors.py
+│   ├── middleware.py          the request ID
+│   ├── throttling.py          the rate limiter
+│   ├── schema.py              the OpenAPI document's declarations
 │   └── services/
 │       ├── planner.py         plan_trip(): runs the steps in section 2
 │       ├── routing.py         the routing service client
@@ -93,17 +91,21 @@ milemarker-api/
 │       └── answer.py          builds the response body
 ├── data/                      fuel CSV, us_cities.csv and its licence, borders.json, README.md
 ├── scripts/
-│   └── live_check.py          runs the live cases of the test catalogue against a running server
+│   ├── live_check.py          runs the live cases of the test catalogue against a running server
+│   └── fake_osrm.py           the stand-in routing server, answering with recorded roads
 ├── tests/
 │   ├── conftest.py            shared fixtures, including the network block
 │   ├── exact.py               the linear-programming and brute-force checks
 │   ├── verify.py              the independent verifier
+│   ├── cache_worker.py        a worker process for the cache tests
 │   ├── test_*.py              one file per area: places, loader, index, sphere, geo, corridor,
 │   │                          fuel, answer, routing, planner, api, project, real_data,
-│   │                          regression, verify
+│   │                          regression, verify, cache, health, hosts, logs, throttling,
+│   │                          schema, fake_osrm
 │   └── fixtures/              a small CSV, and recorded roads under roads/
 └── docs/
     ├── requirements.md, prd.md, backend-architecture.md, use-cases.md, test-cases.md
+    ├── development.md, openapi.yaml
     ├── postman/               the Postman collection
     └── plan/                  the build plan, phase by phase, with briefs and reports
 ```
@@ -416,7 +418,7 @@ Small parts first, the map last, so the result is readable in Postman without sc
 }
 ```
 
-**Unchanged since release 1.0.** The body and the status code of this answer are as release 1.0 gave them. Only headers are added: the request ID, the security headers, and compression through nginx (section 18).
+**Unchanged since release 1.0.** The body and the status code of this answer are as release 1.0 gave them. Only headers are added: the request ID and the security headers.
 
 **Stops.** Stop 1 always has `kind: "start"`: it is the fuel bought before leaving, priced at the listed station nearest the start, and its `lat` and `lng` are the start place. Every other stop has `kind: "station"`, and its `lat` and `lng` are the point where the road passes the station's city, so it sits on the route line. The CSV has no coordinates of its own.
 
@@ -442,7 +444,7 @@ Every error has the same body, whatever raised it:
 
 | Status | Code | When | Details |
 |---|---|---|---|
-| 400 | `invalid_request` | A parameter is missing, empty or malformed, or start and finish are the same place. Also a host that is not allowed, and a request nginx refuses itself (below) | `fields`: the messages per parameter. `fields` is there but empty for a request Django would not read, such as one with more than 1,000 parameters. `details` itself is empty for a host that is not allowed and for a request nginx refuses |
+| 400 | `invalid_request` | A parameter is missing, empty or malformed, or start and finish are the same place. Also a host that is not allowed, and a request line longer than 8,190 bytes (below) | `fields`: the messages per parameter. `fields` is there but empty for a request Django would not read, such as one with more than 1,000 parameters. `details` itself is empty for a host that is not allowed |
 | 400 | `unknown_place` | A place is not in the table | `field`, `query`, `suggestions` (up to 5) |
 | 404 | `not_found` | No such address | — |
 | 405 | `method_not_allowed` | Anything but GET | — |
@@ -454,18 +456,13 @@ Every error has the same body, whatever raised it:
 | 500 | `internal_error` | Anything unexpected | — |
 | 502 | `routing_unavailable` | Both routing servers failed or timed out | `reason`: `timeout` or `error` |
 | 503 | `stations_not_loaded` | `load_stations` has not been run | — |
-| 503 | `api_unavailable` | The API cannot be reached, or does not answer within 30 seconds. Sent by nginx, not by the API (D-24) | — |
 
 `trips/errors.py` holds the table from code to status and builds this body. It also turns the framework's own errors (validation, rate limit, wrong method, unexpected failure) into the same shape. An unexpected failure is logged in full and answered with `internal_error` and no detail. A catch-all route answers every unknown address with `not_found`. Neither depends on Django's debug setting.
 
-Four answers come from outside the route's view, all in the same shape:
+Two answers come from outside the route's view. The first is in the same shape:
 
 - **A host that is not allowed.** A request whose `Host` is not in `DJANGO_ALLOWED_HOSTS` gets 400 `invalid_request`, with empty `details` (D-21). Django's own 400 page is replaced by a handler (`handler400`) that answers in this shape. No 403 handler is set: nothing in the API can answer 403.
-- **The API down or too slow.** When the API cannot be reached, or does not answer within 30 seconds, nginx writes `api_unavailable` itself, with empty `details`, never an HTML error page (section 18).
-- **A request nginx refuses.** A request nginx refuses itself as malformed or too long gets 400 `invalid_request`, with empty `details`, written by nginx.
-- **A missing file under `/assets/`.** nginx answers 404 `not_found` itself, in this shape (section 18).
-
-Every error answer the API sends itself passes through nginx untouched.
+- **A request line over 8,190 bytes.** gunicorn answers it itself with an HTML 414 that cannot be changed (`gunicorn.conf.py`). It is not in the API's shape (section 16).
 
 Only GET is specified. HEAD and OPTIONS are left to the framework's defaults; every other method gets `method_not_allowed`.
 
@@ -496,7 +493,7 @@ The health check makes one cheap cache read before it answers, so the state it r
 - `drf_spectacular` in the installed apps, a `TEMPLATES` entry with `APP_DIRS`, and `DEFAULT_SCHEMA_CLASS` in the REST framework settings.
 - Its routes placed before the include of `trips.urls`, whose last pattern is the catch-all and matches everything.
 - The route view is a plain `APIView`, so the tool cannot guess its parameters or its response. They are declared by hand with `extend_schema`, in `trips/schema.py`: the three parameters, the 200 body, and the error answers in the standard error shape. Until they are declared, `spectacular --validate --fail-on-warn` reports one error.
-- The route lists 400, 422, 429, 500, 502 and 503, each with every code it can carry. Its 503 includes `api_unavailable`, described as sent by the proxy when the API cannot be reached. `not_found` is not listed on the route, because the route's address exists. `not_found` and `method_not_allowed` are described in the document's opening text.
+- The route lists 400, 422, 429, 500, 502 and 503, each with every code it can carry. Its 503 is `stations_not_loaded` only. `not_found` is not listed on the route, because the route's address exists. `not_found` and `method_not_allowed` are described in the document's opening text.
 - The Swagger page loads its script from a CDN at `@latest` by default. `SWAGGER_UI_DIST` pins it to one version.
 
 The document is committed as `docs/openapi.yaml`. A test fails if it and the code disagree.
@@ -513,14 +510,11 @@ The document is committed as `docs/openapi.yaml`. A test fails if it and the cod
 | HTTP client | httpx | Timeouts, connection reuse, and a built-in fake transport for tests |
 | Numbers | numpy, scipy | Vector maths and the KD-tree |
 | Cache | Redis, through Django's cache framework, with the `redis` client; the process's own memory when `REDIS_URL` is unset or Redis cannot be reached | Shared by every worker (D-15, D-16) |
-| Server | gunicorn, 2 worker processes × 4 threads, set in `gunicorn.conf.py` | Several processes behind nginx (NFR-19). Each worker holds its own station index; the caches are shared through Redis |
-| Front door | nginx, unprivileged | Serves the viewer, passes every other address to the API, compresses (section 18) |
+| Server | gunicorn, 2 worker processes × 4 threads, set in `gunicorn.conf.py` | Several processes (NFR-19). Each worker holds its own station index; the caches are shared through Redis |
 | API description | drf-spectacular | The OpenAPI document and the Swagger page, from the code (D-20) |
 | Packaging | uv | One command to install and run |
-| Containers | Docker Compose | One command starts PostgreSQL, Redis, the setup, the API and the viewer |
+| Containers | Docker Compose | One command starts PostgreSQL, Redis, the setup and the API |
 | Tests and lint | pytest, pytest-django, pytest-cov, Ruff, mypy, pip-audit, pre-commit | |
-| Viewer | React 19, TypeScript (strict), Vite, MapLibre GL JS 6, Motion | Section 19 |
-| Viewer tests and lint | Vitest, Testing Library, Playwright, the axe accessibility scanner, ESLint | |
 
 Left out on purpose: pandas (the `csv` module handles 8,151 rows), django-environ (settings are read with `os.environ`), and any API key.
 
@@ -554,20 +548,15 @@ The suite itself is pinned to the in-memory cache, because the fixture that clea
 
 | Check | What it proves | Routing |
 |---|---|---|
-| Proxy tests | The rate limit cannot be escaped with a forged `X-Forwarded-For`; errors stay JSON with the API stopped; responses are compressed | none |
-| End-to-end run | The whole stack through nginx: the Postman collection (Newman), the live-check cases that have saved roads, and the viewer's browser tests. The stand-in's request count matches the routing calls expected | stand-in |
-| Viewer unit tests | The animation's maths: progress, stop timing, counters, as pure functions | none |
-| Viewer component tests | The panel in every state (loading, a plan, each error, suggestions), with the map replaced by a stand-in | none |
-| Viewer browser tests | It really draws: the route's pixels are sampled on the canvas, the animation is run to its end, and the finished state is compared with a screenshot within a tolerance. Also runs with WebGL off and with reduced motion on, and an accessibility scan that must find no violation. Any content security policy violation fails the run | stand-in |
-| Keyboard pass | Every control is reachable by keyboard, walked through by hand in every state (NFR-28) | — |
+| End-to-end run | The whole stack: the Postman collection (Newman) run against the API. The stand-in's request count matches the routing calls expected: eight, each matched to a recording | stand-in |
 
-**The stand-in routing server.** `scripts/fake_osrm.py` answers like the routing server, with the saved real roads in `tests/fixtures/roads/`. It runs from the test image (section 18). A second Compose file, `docker-compose.e2e.yml`, puts it in place of the public servers and the API on a network with no route out (NFR-26). The browser tests use the viewer's built-in outlines (section 19), so they depend on no map server either.
+**The stand-in routing server.** `scripts/fake_osrm.py` answers like the routing server, with the saved real roads in `tests/fixtures/roads/`. It runs from the test image (section 18). A second Compose file, `docker-compose.e2e.yml`, gives the API the stand-in as its only routing server, so a run sends nothing to a public one (NFR-26).
 
-**CI** runs on every push and pull request (NFR-17): lint, format, type check, tests with coverage, `manage.py check --deploy`, the migration check, a dependency audit, the image build, the end-to-end run, and the viewer's lint, type check, unit tests, build and dependency audit. Dependabot proposes dependency updates.
+**CI** runs on every push and pull request (NFR-17): lint, format, type check, tests with coverage, `manage.py check --deploy`, the migration check, a dependency audit, the image build and the end-to-end run. Dependabot proposes dependency updates.
 
 - **Type check:** the Django-free modules of section 3 (NFR-27).
 - **Coverage floor:** the coverage measured when the gate is set up in Phase 10, rounded down to a whole per cent and recorded in `pyproject.toml`. Coverage may not fall below it.
-- **Dependency audits:** `pip-audit` for the Python packages; `npm audit --omit=dev --audit-level=high` for the viewer's.
+- **Dependency audit:** `pip-audit` for the Python packages.
 - **Before a commit:** pre-commit runs Ruff's checks, Ruff's formatter and the file hygiene hooks (NFR-27).
 
 ## 14. Speed
@@ -617,8 +606,8 @@ The suite itself is pinned to the in-memory cache, because the fixture that clea
 | Ready to run behind a TLS terminator | TLS, HSTS, a secrets manager | There is no deployment (D-23) |
 | Plain log lines with a time, a level and a request ID | JSON logs, metrics, tracing, error tracking | There is no operator to read them |
 | Type check on the Django-free modules | Strict typing of the Django layer | The stubs do not yet declare support for Django 6.1 |
-| MapLibre GL JS with its globe projection | CesiumJS; Mapbox, MapTiler, Google 3D tiles and CARTO; deck.gl's own globe; a self-hosted Protomaps extract | CesiumJS is four times the size and its default imagery needs an account; the next four each need a key; deck.gl's globe cannot zoom to street level; the Protomaps extract's size is unverified and more than a fallback needs (D-18) |
-| A viewer of one trip, named by its address | A trip-planning form | The owner chose a viewer (D-19) |
+| **Parked.** MapLibre GL JS with its globe projection | CesiumJS; Mapbox, MapTiler, Google 3D tiles and CARTO; deck.gl's own globe; a self-hosted Protomaps extract | CesiumJS is four times the size and its default imagery needs an account; the next four each need a key; deck.gl's globe cannot zoom to street level; the Protomaps extract's size is unverified and more than a fallback needs (D-18) |
+| **Parked.** A viewer of one trip, named by its address | A trip-planning form | The owner chose a viewer (D-19) |
 
 ## 16. Known limits
 
@@ -632,9 +621,10 @@ The suite itself is pinned to the in-memory cache, because the fixture that clea
 - **The rare fallback is slow.** When the shortened station list has no plan, the plan is chosen from every station, which takes 150 to 300 ms coast to coast (*measured*) and so exceeds NFR-1 for that request.
 - **While Redis is down, the cache and the rate limit are per process** (D-16). A repeat may land on the other worker and be planned again, and each worker counts the limit on its own.
 - **Border outlines are coarse.** A road that follows the border can register up to 10 miles as abroad (*measured*), which is why the limit is 25.
+- **A request line over 8,190 bytes is answered by gunicorn, in HTML.** It is not in the API's error shape, and gunicorn gives no way to change that. A shorter long address reaches the API and gets its JSON 400.
 - **Docker is needed** to run PostgreSQL.
-- **Not deployed.** There is no TLS, HSTS or redirect to HTTPS; they belong to whatever is put in front (D-23).
-- **The viewer's map comes from other people's servers.** The visitor's browser loads tiles from OpenFreeMap and imagery from NASA. If they cannot be reached the viewer draws on its built-in outlines (FR-25). The Swagger page loads its script from a CDN.
+- **Not deployed.** There is no TLS, HSTS or redirect to HTTPS, and no reverse proxy; they belong to whatever is put in front (D-23).
+- **Parked, with the viewer: its map comes from other people's servers.** The visitor's browser loads tiles from OpenFreeMap and imagery from NASA. If they cannot be reached the viewer draws on its built-in outlines (FR-25). The Swagger page loads its script from a CDN.
 - **`drf-spectacular` does not declare support for Django 6.1 or DRF 3.18.** It passed a trial on both (D-20). If a later Django patch breaks it, a hand-written document replaces it.
 - **Only the Django-free modules are type checked.** The type stubs do not yet declare support for Django 6.1.
 
@@ -658,17 +648,16 @@ From a fresh clone with no `.env`, one command, `docker compose up --build`, sta
 | `db` | `postgres:17` | 5432, on `127.0.0.1` only | The seed data |
 | `redis` | Redis, with no persistence, memory capped at 256 MB, least recently used key evicted when full | 6379, on `127.0.0.1` only | The two caches and the rate-limit counters, shared by every worker (section 10) |
 | `setup` | The API image, run once | none | `migrate`, then `load_stations`, then exits |
-| `api` | gunicorn, 2 workers × 4 threads | none | `/api/v1/...`; starts after `setup` succeeds |
-| `web` | nginx, unprivileged, with the viewer built in | 8000, on `127.0.0.1` unless `BIND_ADDRESS` says otherwise | Serves the viewer at `/` and its files under `/assets/`, passes every other address to `api`, compresses responses |
+| `api` | gunicorn, 2 workers × 4 threads | `127.0.0.1:${API_PORT:-8000}` | `/api/v1/...`; starts after `setup` succeeds |
 | `test` | The test image | none | The suite in a container, as in release 1.0; started only with `--profile test` |
 
-Of the API and nginx, only nginx is published (NFR-19). The database and Redis are published on `127.0.0.1` only, for running from source and for the tests.
+The API, the database and Redis are published on `127.0.0.1` only (NFR-19), the last two for running from source and for the tests.
 
-Three Compose variables move the published ports: `API_PORT` (default 8000) moves nginx's, `POSTGRES_PORT` (default 5432) the database's, and `REDIS_PORT` (default 6379) Redis's. A fourth, `BIND_ADDRESS` (default `127.0.0.1`), is the address nginx's port is published on: by default the stack answers only on the machine it runs on, and a deployment sets it to the address its TLS terminator reaches. The database and Redis stay on `127.0.0.1` whatever it says. All four are read by Compose, not by the API.
+Three Compose variables move the published ports: `API_PORT` (default 8000) the API's, `POSTGRES_PORT` (default 5432) the database's, and `REDIS_PORT` (default 6379) Redis's. They are read by Compose, not by the API.
 
-The address release 1.0 used, `http://127.0.0.1:8000/api/v1/route/`, keeps working (NFR-19). It now reaches the API through nginx, so the README, the Postman collection and the live-check script keep their address.
+The address release 1.0 used, `http://127.0.0.1:8000/api/v1/route/`, works (NFR-19).
 
-For the end-to-end run, a second Compose file, `docker-compose.e2e.yml`, puts the stand-in routing server in place of the public servers, and the API on a network with no route out (section 13).
+For the end-to-end run, a second Compose file, `docker-compose.e2e.yml`, gives the API the stand-in routing server as its only routing server (section 13).
 
 ### Start order
 
@@ -680,12 +669,10 @@ The start order follows health checks (NFR-22).
 | `redis` | At once | A ping |
 | `setup` | `db` is healthy | None: it runs `migrate`, then `load_stations`, and exits |
 | `api` | `setup` has exited successfully, and `redis` has started | A request to `/api/v1/health/`, with a 5-second timeout and 6 retries |
-| `web` | `api` is healthy | A request for the viewer's page |
 
 - `api` waits for Redis to have started, not to be healthy: the API must be able to start without it (D-16).
 - Migrations and the station load run once, in `setup`, before the API starts, not in every worker (NFR-22).
 - Each API worker loads the places, the borders and the stations into memory as it starts (section 6).
-- Release 1.0's `docker/entrypoint.sh` is gone: its work moved to `setup` and `gunicorn.conf.py`.
 
 ### Configuration
 
@@ -696,7 +683,7 @@ All of it comes from the environment (NFR-20). Every default makes a fresh clone
 | `DJANGO_SECRET_KEY` | None: a random key is made at start-up | Django's secret key. Nothing is signed, so the workers need not share it (D-21) |
 | `DJANGO_DEBUG` | Off | Django's debug mode |
 | `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1,[::1]` | The host names the API answers to. Any other gets 400 `invalid_request` (D-21). `127.0.0.1` is always allowed, whatever the variable says: the container's health check asks under that name |
-| `DJANGO_NUM_PROXIES` | `0`; the Compose file sets `1` | How many proxies in front of the API to trust when finding a client's address for the rate limit (D-17) |
+| `DJANGO_NUM_PROXIES` | `0`; the Compose file also sets `0` | How many proxies in front of the API to trust when finding a client's address for the rate limit (D-17) |
 | `DATABASE_URL` | `postgresql://milemarker:milemarker@127.0.0.1:5432/milemarker`; the Compose file points it at `db`. The address is `127.0.0.1`, not `localhost`: the database is published on `127.0.0.1` only, and a machine that tries IPv6 first for `localhost` waits seconds on every connection | The PostgreSQL connection (NFR-10) |
 | `REDIS_URL` | Unset: each process uses its own memory | The Redis that holds the caches and the rate-limit counters (D-15). The Compose file points it at `redis` |
 | `ROUTING_SERVERS` | The two public servers of section 9 | The routing servers: URL templates separated by commas, each containing `{coords}`, tried in order. The end-to-end run points it at the stand-in |
@@ -723,9 +710,11 @@ An error answer logs one line at WARNING with its code, and no trip figures. The
 
 Each process also logs one warning when it falls back from Redis, and one line when it returns (section 10).
 
-**The request ID** is made by nginx and passed to the API as `X-Request-ID`. nginx replaces any `X-Request-ID` the client sent with its own. If none arrives, as when the API is run from source, the API makes one. It also makes one when the ID that arrives is not 1 to 64 characters of letters, digits, `.`, `_` and `-`, because the ID is written into the log and the API can be reached with no nginx in front. It is on every log line about the request, and is returned to the client in the response header `X-Request-ID`.
+**The request ID** is made by the API. A client's `X-Request-ID` is kept only if it is 1 to 64 characters of letters, digits, `.`, `_` and `-`, because the ID is written into the log; with none, or any other, the API makes one. It is on every log line about the request, and is returned to the client in the response header `X-Request-ID`.
 
 ### The front door
+
+**Not part of this submission.** This section specifies work that is parked on the branch `viewer`. It is kept as that branch's specification.
 
 nginx, in the `web` service, is the only way in.
 
@@ -753,41 +742,32 @@ nginx, in the `web` service, is the only way in.
 
 ### Images
 
-The API image is built in stages. The running image holds only what runs, and runs as a user that cannot write to the code (NFR-25). It must not pick up `web/node_modules`. The `web` image builds the viewer with Node, then serves the built files from unprivileged nginx.
-
+The API image is built in stages. The running image holds only what runs, and runs as a user that cannot write to the code (NFR-25). 
 The stand-in routing server runs from the test image, which holds the tests and the recorded roads. The running image holds neither.
 
 ### Commands
 
-The everyday commands are `make` targets, and `make help` lists them (NFR-30). Each recipe line is one plain command, so the targets work on Linux, on macOS, and on Windows under Git Bash or PowerShell. The README shows the plain command beside each, for anyone without make.
+The everyday commands are nine `make` targets (NFR-30). Each recipe line is one plain command, so the targets work on Linux, on macOS, and on Windows under Git Bash or PowerShell. The README shows the plain command beside each, for anyone without make.
 
-| Target | Does |
-|---|---|
-| `help` | Lists every target with its one-line description |
-| `up` | The Compose stack, built, in the background |
-| `down` | Stops it |
-| `logs` | Follows the API's log |
-| `ps` | Shows the services |
-| `dev` | The database container, then the API from source with auto-reload on port 8001 (the make variable `DEV_PORT`) |
-| `migrate`, `load`, `shell` | `manage.py migrate`, `manage.py load_stations` and `manage.py shell`, from source |
-| `test` | The suite from source |
-| `test-slow` | The slow exactness test |
-| `test-docker` | The suite in a container |
-| `coverage` | The suite with a coverage report in the terminal |
-| `lint` | Ruff's checks and its format check |
-| `format` | Ruff's fixes and formatter |
-| `typecheck` | mypy, with its settings from `pyproject.toml` |
-| `audit` | pip-audit |
-| `check` | `lint`, `typecheck` and `test` |
-| `e2e-up`, `e2e-down` | Start and stop the end-to-end stack with the stand-in routing server |
-| `e2e` | Newman on the whole Postman collection against the running end-to-end stack. From Phase 12 it then runs the viewer's browser tests against the same stack |
-| `live` | `scripts/live_check.py` against the running stack. It calls the public routing server |
-| `clean` | Stops everything and deletes the volumes |
-| `web-dev` | Comes with the viewer, in Phase 12: the viewer's dev server, passing `/api` to the API that `make dev` serves on port 8001 |
+| Target | Does | Plain command |
+|---|---|---|
+| `up` | The Compose stack, built, in the background | `docker compose up --build -d` |
+| `down` | Stops it | `docker compose -f docker-compose.yml -f docker-compose.e2e.yml down --remove-orphans` |
+| `logs` | Follows the API's log | `docker compose logs -f api` |
+| `test` | The tests, in a container | `docker compose --profile test run --rm test` |
+| `lint` | Ruff's checks, its format check and the type check | `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy` |
+| `dev` | The database and Redis containers, then the API from source with auto-reload on port 8001 | `docker compose up -d db redis`, then `uv run python manage.py runserver 127.0.0.1:8001` |
+| `offline` | The stack on recorded roads, with no call to a public routing server; empties the stand-in's Redis database | the Compose command with both files, then `redis-cli -n 1 FLUSHDB` in the `redis` service |
+| `postman` | The Postman collection, against the running API | `npx newman run docs/postman/milemarker.postman_collection.json --env-var base_url=http://127.0.0.1:8000` |
+| `clean` | Stops everything and deletes the volumes | the `down` command with `-v` |
 
-`make dev` starts only the database container. The API it runs from source uses the in-memory cache unless `REDIS_URL` is set. Redis is published on `127.0.0.1:${REDIS_PORT:-6379}` for that case and for the Redis tests.
+`make help` lists them (NFR-30).
+
+`make dev` starts the database and Redis. The API it runs from source uses the in-memory cache unless `REDIS_URL` is set. Redis is published on `127.0.0.1:${REDIS_PORT:-6379}` for that case and for the Redis tests.
 
 ## 19. The viewer
+
+**Not part of this submission.** This section specifies work that is parked on the branch `viewer`. It is kept as that branch's specification.
 
 A separate web application, in `web/`, that draws one trip on a map (FR-18). It is opened as `/?start=…&finish=…&stop_cost=…`, the same parameters as the API, for example `/?start=New York, NY&finish=Los Angeles, CA&stop_cost=10`. It reads them, asks the API once (FR-21), and draws the GeoJSON the API returns (D-2). The API's response does not change for it and carries no link to it.
 

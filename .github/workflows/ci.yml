@@ -126,7 +126,7 @@ jobs:
               raise SystemExit("The stand-in served no routing request")
           if unmatched:
               raise SystemExit(f"{len(unmatched)} request(s) matched no recording: {unmatched}")
-          # The collection's fourteen requests are eight distinct trips; the rest are
+          # The collection's sixteen requests are eight distinct trips; the rest are
           # answered from the cache or refused before routing.
           if log["count"] != 8:
               raise SystemExit(f"{log['count']} routing requests, expected 8")

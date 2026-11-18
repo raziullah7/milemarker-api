@@ -11,9 +11,6 @@ __pycache__
 .env*
 !.env.example
 
-# The viewer's packages, installed on the machine; an image installs its own.
-node_modules
-**/node_modules
 
 # Research working data, fetched again by its scripts.
 docs/plan/research/cache

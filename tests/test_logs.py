@@ -77,7 +77,7 @@ def test_cf14_with_no_request_id_the_api_makes_one(client, log, ep01_world):
 
 # Ruling on 11K's report: a sent ID is used only if it is 1 to 64 letters, digits, ".", "_"
 # and "-". The ID is written into every line of the request, and the API can be reached with
-# no nginx in front. A request refused before any lookup, so it needs no stations.
+# no proxy in front. A request refused before any lookup, so it needs no stations.
 ROUTING_FREE = {"start": "Dallas, TX"}
 
 

@@ -21,7 +21,8 @@ x-api-environment: &api-environment
   DJANGO_DEBUG: ${DJANGO_DEBUG:-}
   DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-}
   # 0 while the API is published itself: trusting a forwarded address with no proxy in
-  # front would let a client choose its own rate-limit bucket. nginx brings 1.
+  # front would let a client choose its own rate-limit bucket. A reverse proxy that
+  # overwrites the header, if one is put in front, would make it 1.
   DJANGO_NUM_PROXIES: ${DJANGO_NUM_PROXIES:-0}
   DATABASE_URL: postgresql://milemarker:milemarker@db:5432/milemarker
   REDIS_URL: redis://redis:6379/0

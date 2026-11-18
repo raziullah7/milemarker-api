@@ -18,7 +18,7 @@ The first start takes about a minute: it loads 6,626 fuel stations. Then open **
 curl "http://127.0.0.1:8000/api/v1/route/?start=New%20York,%20NY&finish=Los%20Angeles,%20CA"
 ```
 
-Stop it with `docker compose down`.
+Stop it with `docker compose down`. If port 8000 is taken, put `API_PORT=8100` in a file named `.env` before starting.
 
 ## What comes back
 
@@ -106,4 +106,4 @@ All fifteen decisions, each with the measurement behind it, are in [`docs/requir
 | [`docs/postman/`](docs/postman/) | The Postman collection |
 | [`docs/plan/`](docs/plan/) | The build plan, phase by phase |
 
-The fuel prices are the file supplied with the task. Sources and licences for the other data are in [`data/README.md`](data/README.md).
+The code is under the [MIT licence](LICENSE). The fuel prices are the file supplied with the task; sources and licences for the other data are in [`data/README.md`](data/README.md).

@@ -166,12 +166,12 @@ def test_hm10_django_sets_the_security_headers_on_every_answer(client, ep01_worl
 
 
 # Of section 9.6, the front door, the two cases whose point the API settles alone. The rest
-# need nginx and come with it in Phase 12.
+# need a reverse proxy, which is not part of this submission.
 
 
 def test_px16_no_cross_origin_headers(client, ep01_world):
-    """PX-16, the API's part: the viewer will be on the same origin (D-17), so the API
-    grants no other origin anything."""
+    """PX-16, the API's part: nothing is meant to call the API from another origin (D-17),
+    so the API grants no other origin anything."""
     other = {"Origin": "http://other.example"}
     answers = [
         client.get(URL, TRIP, headers=other),

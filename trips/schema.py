@@ -14,6 +14,7 @@ which checks them (trips/serializers.py), so the document cannot fall behind it.
 
 from decimal import Decimal
 
+from django.conf import settings
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiExample,
@@ -139,7 +140,7 @@ class AssumptionsSerializer(serializers.Serializer):
     )
     stop_cost = _number(
         "The cost in dollars charged per stop while the plan was chosen: the request's "
-        "stop_cost, or 10."
+        f"stop_cost, or {_plain(settings.DEFAULT_STOP_COST)}."
     )
     search_radius_miles = serializers.IntegerField(
         help_text="How many miles either side of the road stations are searched for."
@@ -449,10 +450,6 @@ Error503 = _error_body(
     "503",
     {
         "stations_not_loaded": "the station table is empty: `load_stations` has not been run",
-        "api_unavailable": (
-            "sent by the proxy, not by the API, when the API cannot be reached or does not "
-            "answer within 30 seconds"
-        ),
     },
     NoDetails,
 )
@@ -741,14 +738,6 @@ _ERRORS = [
         "stations_not_loaded",
         "The station table is empty",
     ),
-    _error(
-        "api_unavailable",
-        "The API cannot be reached.",
-        {},
-        503,
-        "api_unavailable",
-        "Sent by the proxy when the API cannot be reached",
-    ),
 ]
 
 
@@ -868,11 +857,7 @@ route_schema = extend_schema(
         ),
         503: OpenApiResponse(
             Error503,
-            description=(
-                "The API cannot answer. `stations_not_loaded` comes from the API. "
-                "`api_unavailable` is sent by the proxy in front of it when the API cannot be "
-                "reached or does not answer within 30 seconds."
-            ),
+            description="The station table is empty: `load_stations` has not been run.",
             examples=_examples(503),
         ),
     },

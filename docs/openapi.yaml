@@ -491,16 +491,7 @@ paths:
                         load_stations'
                       details: {}
                   summary: The station table is empty
-                ApiUnavailable:
-                  value:
-                    error:
-                      code: api_unavailable
-                      message: The API cannot be reached.
-                      details: {}
-                  summary: Sent by the proxy when the API cannot be reached
-          description: The API cannot answer. `stations_not_loaded` comes from the
-            API. `api_unavailable` is sent by the proxy in front of it when the API
-            cannot be reached or does not answer within 30 seconds.
+          description: 'The station table is empty: `load_stations` has not been run.'
 components:
   schemas:
     Assumptions:
@@ -818,10 +809,8 @@ components:
           type: string
           enum:
           - stations_not_loaded
-          - api_unavailable
-          description: |-
-            `stations_not_loaded`: the station table is empty: `load_stations` has not been run
-            `api_unavailable`: sent by the proxy, not by the API, when the API cannot be reached or does not answer within 30 seconds
+          description: '`stations_not_loaded`: the station table is empty: `load_stations`
+            has not been run'
         message:
           type: string
           description: One plain sentence for a person.

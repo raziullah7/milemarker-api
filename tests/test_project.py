@@ -408,7 +408,6 @@ ALL_VARIABLES = {
     "API_PORT": "Compose",
     "POSTGRES_PORT": "Compose",
     "REDIS_PORT": "Compose",
-    "BIND_ADDRESS": "Compose",
 }
 
 

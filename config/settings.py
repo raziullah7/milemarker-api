@@ -83,7 +83,7 @@ TEMPLATES = [
     }
 ]
 
-# One value everywhere, nginx's included (architecture section 18).
+# One value everywhere, a reverse proxy's included, if one is put in front.
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 
 # TLS, HSTS and the redirect to HTTPS belong to the TLS terminator put in front (D-23), so

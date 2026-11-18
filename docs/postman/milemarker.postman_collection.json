@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Mile Marker API",
-    "description": "Mile Marker API plans a fuel-efficient road trip between two US cities: the route, where to stop for fuel, and what it costs, with a GeoJSON map.\nThe one collection variable is base_url (default http://127.0.0.1:8000); change it to point at another server.\nRun the requests in order: the Demo folder saves figures from the first request and the next three check themselves against them. The Errors folder needs no earlier request.\nFrom the command line: npx newman run milemarker.postman_collection.json --delay-request 1200",
+    "description": "Mile Marker API plans a fuel-efficient road trip between two US cities: the route, where to stop for fuel, and what it costs, with a GeoJSON map.\nThe one collection variable is base_url (default http://127.0.0.1:8000); change it to point at another server.\nRun the requests in order: the Demo folder saves figures from the first request and the next three check themselves against them. The Errors folder and the Health and schema folder need no earlier request.\nThe collection's own script checks every 200 from the route: the walk along the stops, the cost of each stop and the map points. It also draws the map in the Visualize tab.\nFrom the command line: npx newman run docs/postman/milemarker.postman_collection.json --env-var base_url=http://127.0.0.1:8000 (or make postman)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -37,21 +37,15 @@
                   "  pm.expect(body.meta.routing_calls).to.be.within(0, 2);",
                   "  if (body.meta.cache_hit) { pm.expect(body.meta.routing_calls).to.eql(0); }",
                   "});",
-                  "pm.test(\"distance_miles within 2% of 2800.7\", function () { pm.expect(s.distance_miles).to.be.within(2800.7 * 0.98, 2800.7 * 1.02); });",
-                  "pm.test(\"total_fuel_cost within 2% of 865.93\", function () { pm.expect(s.total_fuel_cost).to.be.within(865.93 * 0.98, 865.93 * 1.02); });",
-                  "pm.test(\"lowest_possible_fuel_cost within 2% of 854.65\", function () { pm.expect(s.lowest_possible_fuel_cost).to.be.within(854.65 * 0.98, 854.65 * 1.02); });",
+                  "pm.test(\"distance_miles within 0.5% of 2800.7\", function () { pm.expect(s.distance_miles).to.be.within(2800.7 * 0.995, 2800.7 * 1.005); });",
+                  "pm.test(\"total_fuel_cost within 0.5% of 867.29\", function () { pm.expect(s.total_fuel_cost).to.be.within(867.29 * 0.995, 867.29 * 1.005); });",
+                  "pm.test(\"lowest_possible_fuel_cost within 0.5% of 855.97\", function () { pm.expect(s.lowest_possible_fuel_cost).to.be.within(855.97 * 0.995, 855.97 * 1.005); });",
                   "pm.test(\"first_fill_distance_miles within 2% of 3.1\", function () { pm.expect(s.first_fill_distance_miles).to.be.within(3.1 * 0.98, 3.1 * 1.02); });",
                   "pm.test(\"warnings is empty\", function () { pm.expect(body.warnings).to.eql([]); });",
                   "pm.test(\"labels are New York, NY and Los Angeles, CA\", function () { pm.expect(s.start.label).to.eql(\"New York, NY\"); pm.expect(s.finish.label).to.eql(\"Los Angeles, CA\"); });",
                   "pm.collectionVariables.set(\"p01_total\", s.total_fuel_cost);",
                   "pm.collectionVariables.set(\"p01_stops\", s.stops);",
-                  "pm.collectionVariables.set(\"p01_lowest\", s.lowest_possible_fuel_cost);",
-                  "// Map for the Visualize tab. Guarded so a failure here can never fail the run (Newman has no visualizer).",
-                  "try {",
-                  "  if (pm.visualizer && typeof pm.visualizer.set === \"function\" && body && body.map) {",
-                  "    pm.visualizer.set(\"\\n<link rel=\\\"stylesheet\\\" href=\\\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\\\">\\n<style>html,body{margin:0;padding:0;font-family:sans-serif}#m{height:90vh;min-height:480px}#note{padding:4px 8px;font-size:12px}</style>\\n<div id=\\\"note\\\">Loading map...</div>\\n<div id=\\\"m\\\"></div>\\n<script src=\\\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\\\"></script>\\n<script>\\npm.getData(function (err, data) {\\n  var note = document.getElementById('note');\\n  if (err || !data || !data.map) { note.textContent = 'No map data'; return; }\\n  if (typeof L === 'undefined') { note.textContent = 'Leaflet did not load (CDN blocked?)'; return; }\\n  var map = L.map('m');\\n  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {\\n    maxZoom: 19,\\n    attribution: '&copy; OpenStreetMap contributors'\\n  }).addTo(map);\\n  var lineBounds = null;\\n  data.map.features.forEach(function (f) {\\n    if (f.geometry.type === 'LineString') {\\n      var line = L.geoJSON(f, { style: function () { return { color: '#d6336c', weight: 4 }; } }).addTo(map);\\n      lineBounds = line.getBounds();\\n    } else if (f.geometry.type === 'Point') {\\n      var ll = [f.geometry.coordinates[1], f.geometry.coordinates[0]];\\n      var el = document.createElement('div');\\n      el.textContent = (f.properties && f.properties.title) || 'stop';\\n      L.marker(ll).addTo(map).bindPopup(el);\\n    }\\n  });\\n  if (lineBounds) { map.fitBounds(lineBounds, { padding: [20, 20] }); } else { map.setView([39, -98], 4); }\\n  note.textContent = data.map.features.length + ' features';\\n});\\n</script>\", { map: body.map });",
-                  "  }",
-                  "} catch (e) { /* ignore */ }"
+                  "pm.collectionVariables.set(\"p01_lowest\", s.lowest_possible_fuel_cost);"
                 ]
               }
             }
@@ -108,13 +102,7 @@
                   "  if (body.meta.cache_hit) { pm.expect(body.meta.routing_calls).to.eql(0); }",
                   "});",
                   "pm.test(\"same total and stop count as P01\", function () { pm.expect(s.total_fuel_cost).to.eql(Number(pm.collectionVariables.get(\"p01_total\"))); pm.expect(s.stops).to.eql(Number(pm.collectionVariables.get(\"p01_stops\"))); });",
-                  "pm.test(\"no routing call, cache hit\", function () { pm.expect(body.meta.routing_calls).to.eql(0); pm.expect(body.meta.cache_hit).to.eql(true); });",
-                  "// Map for the Visualize tab. Guarded so a failure here can never fail the run (Newman has no visualizer).",
-                  "try {",
-                  "  if (pm.visualizer && typeof pm.visualizer.set === \"function\" && body && body.map) {",
-                  "    pm.visualizer.set(\"\\n<link rel=\\\"stylesheet\\\" href=\\\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\\\">\\n<style>html,body{margin:0;padding:0;font-family:sans-serif}#m{height:90vh;min-height:480px}#note{padding:4px 8px;font-size:12px}</style>\\n<div id=\\\"note\\\">Loading map...</div>\\n<div id=\\\"m\\\"></div>\\n<script src=\\\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\\\"></script>\\n<script>\\npm.getData(function (err, data) {\\n  var note = document.getElementById('note');\\n  if (err || !data || !data.map) { note.textContent = 'No map data'; return; }\\n  if (typeof L === 'undefined') { note.textContent = 'Leaflet did not load (CDN blocked?)'; return; }\\n  var map = L.map('m');\\n  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {\\n    maxZoom: 19,\\n    attribution: '&copy; OpenStreetMap contributors'\\n  }).addTo(map);\\n  var lineBounds = null;\\n  data.map.features.forEach(function (f) {\\n    if (f.geometry.type === 'LineString') {\\n      var line = L.geoJSON(f, { style: function () { return { color: '#d6336c', weight: 4 }; } }).addTo(map);\\n      lineBounds = line.getBounds();\\n    } else if (f.geometry.type === 'Point') {\\n      var ll = [f.geometry.coordinates[1], f.geometry.coordinates[0]];\\n      var el = document.createElement('div');\\n      el.textContent = (f.properties && f.properties.title) || 'stop';\\n      L.marker(ll).addTo(map).bindPopup(el);\\n    }\\n  });\\n  if (lineBounds) { map.fitBounds(lineBounds, { padding: [20, 20] }); } else { map.setView([39, -98], 4); }\\n  note.textContent = data.map.features.length + ' features';\\n});\\n</script>\", { map: body.map });",
-                  "  }",
-                  "} catch (e) { /* ignore */ }"
+                  "pm.test(\"no routing call, cache hit\", function () { pm.expect(body.meta.routing_calls).to.eql(0); pm.expect(body.meta.cache_hit).to.eql(true); });"
                 ]
               }
             }
@@ -174,13 +162,7 @@
                   "pm.test(\"total equals its own lowest_possible_fuel_cost\", function () { pm.expect(s.total_fuel_cost).to.eql(s.lowest_possible_fuel_cost); });",
                   "pm.test(\"more stops than P01\", function () { pm.expect(s.stops).to.be.above(Number(pm.collectionVariables.get(\"p01_stops\"))); });",
                   "pm.test(\"assumptions.stop_cost is 0\", function () { pm.expect(body.assumptions.stop_cost).to.eql(0); });",
-                  "pm.test(\"no routing call (the road is cached)\", function () { pm.expect(body.meta.routing_calls).to.eql(0); });",
-                  "// Map for the Visualize tab. Guarded so a failure here can never fail the run (Newman has no visualizer).",
-                  "try {",
-                  "  if (pm.visualizer && typeof pm.visualizer.set === \"function\" && body && body.map) {",
-                  "    pm.visualizer.set(\"\\n<link rel=\\\"stylesheet\\\" href=\\\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\\\">\\n<style>html,body{margin:0;padding:0;font-family:sans-serif}#m{height:90vh;min-height:480px}#note{padding:4px 8px;font-size:12px}</style>\\n<div id=\\\"note\\\">Loading map...</div>\\n<div id=\\\"m\\\"></div>\\n<script src=\\\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\\\"></script>\\n<script>\\npm.getData(function (err, data) {\\n  var note = document.getElementById('note');\\n  if (err || !data || !data.map) { note.textContent = 'No map data'; return; }\\n  if (typeof L === 'undefined') { note.textContent = 'Leaflet did not load (CDN blocked?)'; return; }\\n  var map = L.map('m');\\n  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {\\n    maxZoom: 19,\\n    attribution: '&copy; OpenStreetMap contributors'\\n  }).addTo(map);\\n  var lineBounds = null;\\n  data.map.features.forEach(function (f) {\\n    if (f.geometry.type === 'LineString') {\\n      var line = L.geoJSON(f, { style: function () { return { color: '#d6336c', weight: 4 }; } }).addTo(map);\\n      lineBounds = line.getBounds();\\n    } else if (f.geometry.type === 'Point') {\\n      var ll = [f.geometry.coordinates[1], f.geometry.coordinates[0]];\\n      var el = document.createElement('div');\\n      el.textContent = (f.properties && f.properties.title) || 'stop';\\n      L.marker(ll).addTo(map).bindPopup(el);\\n    }\\n  });\\n  if (lineBounds) { map.fitBounds(lineBounds, { padding: [20, 20] }); } else { map.setView([39, -98], 4); }\\n  note.textContent = data.map.features.length + ' features';\\n});\\n</script>\", { map: body.map });",
-                  "  }",
-                  "} catch (e) { /* ignore */ }"
+                  "pm.test(\"no routing call (the road is cached)\", function () { pm.expect(body.meta.routing_calls).to.eql(0); });"
                 ]
               }
             }
@@ -242,15 +224,9 @@
                   "});",
                   "pm.test(\"no more stops than P01\", function () { pm.expect(s.stops).to.be.at.most(Number(pm.collectionVariables.get(\"p01_stops\"))); });",
                   "pm.test(\"total not below P01's\", function () { pm.expect(s.total_fuel_cost).to.be.at.least(Number(pm.collectionVariables.get(\"p01_total\"))); });",
-                  "pm.test(\"total_fuel_cost within 2% of 884.79\", function () { pm.expect(s.total_fuel_cost).to.be.within(884.79 * 0.98, 884.79 * 1.02); });",
+                  "pm.test(\"total_fuel_cost within 0.5% of 886.19\", function () { pm.expect(s.total_fuel_cost).to.be.within(886.19 * 0.995, 886.19 * 1.005); });",
                   "pm.test(\"assumptions.stop_cost is 25\", function () { pm.expect(body.assumptions.stop_cost).to.eql(25); });",
-                  "pm.test(\"no routing call (the road is cached)\", function () { pm.expect(body.meta.routing_calls).to.eql(0); });",
-                  "// Map for the Visualize tab. Guarded so a failure here can never fail the run (Newman has no visualizer).",
-                  "try {",
-                  "  if (pm.visualizer && typeof pm.visualizer.set === \"function\" && body && body.map) {",
-                  "    pm.visualizer.set(\"\\n<link rel=\\\"stylesheet\\\" href=\\\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\\\">\\n<style>html,body{margin:0;padding:0;font-family:sans-serif}#m{height:90vh;min-height:480px}#note{padding:4px 8px;font-size:12px}</style>\\n<div id=\\\"note\\\">Loading map...</div>\\n<div id=\\\"m\\\"></div>\\n<script src=\\\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\\\"></script>\\n<script>\\npm.getData(function (err, data) {\\n  var note = document.getElementById('note');\\n  if (err || !data || !data.map) { note.textContent = 'No map data'; return; }\\n  if (typeof L === 'undefined') { note.textContent = 'Leaflet did not load (CDN blocked?)'; return; }\\n  var map = L.map('m');\\n  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {\\n    maxZoom: 19,\\n    attribution: '&copy; OpenStreetMap contributors'\\n  }).addTo(map);\\n  var lineBounds = null;\\n  data.map.features.forEach(function (f) {\\n    if (f.geometry.type === 'LineString') {\\n      var line = L.geoJSON(f, { style: function () { return { color: '#d6336c', weight: 4 }; } }).addTo(map);\\n      lineBounds = line.getBounds();\\n    } else if (f.geometry.type === 'Point') {\\n      var ll = [f.geometry.coordinates[1], f.geometry.coordinates[0]];\\n      var el = document.createElement('div');\\n      el.textContent = (f.properties && f.properties.title) || 'stop';\\n      L.marker(ll).addTo(map).bindPopup(el);\\n    }\\n  });\\n  if (lineBounds) { map.fitBounds(lineBounds, { padding: [20, 20] }); } else { map.setView([39, -98], 4); }\\n  note.textContent = data.map.features.length + ' features';\\n});\\n</script>\", { map: body.map });",
-                  "  }",
-                  "} catch (e) { /* ignore */ }"
+                  "pm.test(\"no routing call (the road is cached)\", function () { pm.expect(body.meta.routing_calls).to.eql(0); });"
                 ]
               }
             }
@@ -829,6 +805,134 @@
           }
         }
       ]
+    },
+    {
+      "name": "4. Health and schema",
+      "item": [
+        {
+          "name": "Health: the stations are loaded",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "pm.test(\"body is status, stations and cache, and nothing else\", function () { pm.expect(Object.keys(body).sort()).to.eql([\"cache\", \"stations\", \"status\"]); });",
+                  "pm.test(\"status is ok and all 6,626 stations are loaded\", function () { pm.expect(body.status).to.eql(\"ok\"); pm.expect(body.stations).to.eql(6626); });",
+                  "pm.test(\"cache is redis, fallback or memory\", function () { pm.expect(body.cache).to.be.oneOf([\"redis\", \"fallback\", \"memory\"]); });",
+                  "pm.test(\"the answer carries an X-Request-ID\", function () { pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\").and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Case HS-01. Look at: status ok, the station count, and which cache this worker uses. Never rate limited, and it makes no routing call.",
+            "url": {
+              "raw": "{{base_url}}/api/v1/health/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "health",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Schema: the OpenAPI document",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var doc = pm.response.json();",
+                  "pm.test(\"an OpenAPI 3.0 document titled Mile Marker API\", function () { pm.expect(doc.openapi).to.match(/^3\\.0\\./); pm.expect(doc.info.title).to.eql(\"Mile Marker API\"); });",
+                  "pm.test(\"the route and health are described\", function () { pm.expect(Object.keys(doc.paths)).to.include.members([\"/api/v1/route/\", \"/api/v1/health/\"]); });",
+                  "pm.test(\"the route lists 200, 400, 422, 429, 500, 502 and 503\", function () { pm.expect(Object.keys(doc.paths[\"/api/v1/route/\"].get.responses).sort()).to.eql([\"200\", \"400\", \"422\", \"429\", \"500\", \"502\", \"503\"]); });",
+                  "pm.test(\"no answer of a proxy is described\", function () { pm.expect(pm.response.text()).to.not.include(\"api_unavailable\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/vnd.oai.openapi+json",
+                "type": "text"
+              }
+            ],
+            "description": "Case HS-11. Look at: the OpenAPI document as JSON (asked for with the Accept header); the route and health are described, and the route lists every status it can answer with. The same document is shown, interactively, at /api/v1/docs/.",
+            "url": {
+              "raw": "{{base_url}}/api/v1/schema/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "schema",
+                ""
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Runs after every request. Only a 200 from the route is checked here.",
+          "if (pm.request.url.getPath().indexOf(\"/api/v1/route/\") === 0 && pm.response.code === 200) {",
+          "  var body = pm.response.json();",
+          "  var stops = body.fuel_stops, miles = body.summary.distance_miles;",
+          "  pm.test(\"the stops walk: no leg over 500 miles, the tank between 0 and 50 gallons, markers rising\", function () {",
+          "    var tank = 0, at = 0, slack = 0.25;",
+          "    stops.forEach(function (x, i) {",
+          "      var leg = x.mile_marker - at;",
+          "      if (i > 0) { pm.expect(leg, \"marker of stop \" + x.order + \" is after the one before\").to.be.above(0); }",
+          "      pm.expect(leg, \"leg to stop \" + x.order).to.be.at.most(500.1);",
+          "      tank -= leg / 10;",
+          "      pm.expect(tank, \"tank on arriving at stop \" + x.order).to.be.at.least(-slack);",
+          "      tank += x.gallons;",
+          "      pm.expect(tank, \"tank on leaving stop \" + x.order).to.be.at.most(50 + slack);",
+          "      at = x.mile_marker;",
+          "    });",
+          "    pm.expect(miles - at, \"last stop to the finish\").to.be.within(0, 500.1);",
+          "    pm.expect(tank - (miles - at) / 10, \"tank at the finish\").to.be.at.least(-slack);",
+          "  });",
+          "  pm.test(\"each cost is its gallons times its price, to the cent\", function () {",
+          "    stops.forEach(function (x) { pm.expect(Math.abs(x.cost - x.gallons * x.price_per_gallon), \"stop \" + x.order).to.be.at.most(0.005 + 1e-9); });",
+          "  });",
+          "  pm.test(\"the map has one Point per stop, where the stop is\", function () {",
+          "    var points = body.map.features.filter(function (f) { return f.geometry.type === \"Point\" && f.properties.kind === \"stop\"; });",
+          "    pm.expect(points.length).to.eql(stops.length);",
+          "    points.forEach(function (f, i) { pm.expect(f.geometry.coordinates).to.eql([stops[i].lng, stops[i].lat]); pm.expect(f.properties.order).to.eql(stops[i].order); });",
+          "  });",
+          "  // The map for the Visualize tab. Guarded, so a failure here never fails a run (Newman has no visualizer).",
+          "  try {",
+          "    if (pm.visualizer && typeof pm.visualizer.set === \"function\" && body.map) {",
+          "      var template = [\"<link rel=\\\"stylesheet\\\" href=\\\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\\\">\", \"<style>html,body{margin:0;padding:0;font-family:sans-serif}#m{height:90vh;min-height:480px}#note{padding:4px 8px;font-size:12px}</style>\", \"<div id=\\\"note\\\">Loading map...</div>\", \"<div id=\\\"m\\\"></div>\", \"<script src=\\\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\\\"></script>\", \"<script>\", \"pm.getData(function (err, data) {\", \"  var note = document.getElementById('note');\", \"  if (err || !data || !data.map) { note.textContent = 'No map data'; return; }\", \"  if (typeof L === 'undefined') { note.textContent = 'Leaflet did not load (CDN blocked?)'; return; }\", \"  var map = L.map('m');\", \"  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);\", \"  var bounds = L.latLngBounds([]);\", \"  var points = data.map.features.filter(function (f) { return f.geometry.type === \\\"Point\\\"; });\", \"  data.map.features.forEach(function (f) {\", \"    if (f.geometry.type === \\\"LineString\\\") {\", \"      var line = L.geoJSON(f, { style: function () { return { color: '#d6336c', weight: 4 }; } }).addTo(map);\", \"      bounds.extend(line.getBounds());\", \"    }\", \"  });\", \"  // The start and the finish are drawn first and larger, so a stop at the start shows inside the start.\", \"  function draw(f, radius) {\", \"    var ll = [f.geometry.coordinates[1], f.geometry.coordinates[0]];\", \"    var el = document.createElement(\\\"div\\\");\", \"    el.textContent = (f.properties && f.properties.title) || \\\"stop\\\";\", \"    var colour = (f.properties && f.properties[\\\"marker-color\\\"]) || \\\"#3388ff\\\";\", \"    L.circleMarker(ll, { radius: radius, color: \\\"#ffffff\\\", weight: 2, fillColor: colour, fillOpacity: 1 }).addTo(map).bindPopup(el);\", \"    bounds.extend(ll);\", \"  }\", \"  points.filter(function (f) { return f.properties.kind !== \\\"stop\\\"; }).forEach(function (f) { draw(f, 11); });\", \"  points.filter(function (f) { return f.properties.kind === \\\"stop\\\"; }).forEach(function (f) { draw(f, 6); });\", \"  if (bounds.isValid()) { map.fitBounds(bounds, { padding: [60, 60] }); } else { map.setView([39, -98], 4); }\", \"  note.textContent = data.map.features.length + ' features';\", \"});\", \"</script>\"].join(\"\\n\");",
+          "      pm.visualizer.set(template, { map: body.map });",
+          "    }",
+          "  } catch (e) { /* ignore */ }",
+          "}"
+        ]
+      }
     }
   ]
 }

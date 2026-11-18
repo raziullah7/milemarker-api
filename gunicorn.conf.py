@@ -52,8 +52,8 @@ graceful_timeout = 30
 
 # A request line of up to 8,190 bytes, gunicorn's highest (its default is 4,094), so a long
 # address reaches the API and gets the API's JSON answer. gunicorn answers a longer line
-# itself, with an HTML 414 it gives no way to change; from the next release nginx refuses
-# such a line first, in JSON, and its own limit must stay below this one (Q1-05).
+# itself, with an HTML 414 it gives no way to change. A reverse proxy, if one is put in
+# front, would need a limit below this one to refuse such a line first (Q1-05).
 limit_request_line = 8190
 
 # The lowest level of message written, as for the API's own lines.

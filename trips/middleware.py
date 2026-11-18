@@ -15,16 +15,16 @@ from config.logs import request_id
 from trips.views import bad_request
 
 # A request ID that may be written into the log: 1 to 64 letters, digits, ".", "_" and "-".
-# nginx's own, 32 hexadecimal characters, pass.
+# A 32-character hexadecimal ID, as a proxy might make, passes.
 GOOD_REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{1,64}")
 
 
 class RequestIdMiddleware:
-    """The request's ID: the X-Request-ID it came with, which nginx sets, or a new one when
-    none came, as when the API is run from source. It is on every log line written while
+    """The request's ID: the X-Request-ID it came with, or a new one when
+    none came. It is on every log line written while
     the request is answered (config/logs.py) and in the answer's X-Request-ID header.
 
-    The API can be reached with no nginx in front, so an ID that came is used only if it
+    The API can be reached with no proxy in front, so an ID that came is used only if it
     has the form of GOOD_REQUEST_ID; any other is replaced, as if none had come.
     """
 

@@ -31,7 +31,7 @@ Accounts or keys, trips with more than two points, comparing routes, live prices
 
 **First release:** every need (FR-1 to FR-11, NFR-1 to NFR-10), then the wants (FR-12 to FR-16, NFR-11 to NFR-16).
 
-**Second release:** FR-18 to FR-26 and NFR-17 to NFR-31, with NFR-9 and NFR-16 changed. FR-26 and NFR-9 are needs; the rest are wants. This adds the map viewer, the OpenAPI page, Redis, two workers behind nginx, CI and the Makefile.
+**Second release:** FR-18 to FR-26 and NFR-17 to NFR-31, with NFR-9 and NFR-16 changed. FR-26 and NFR-9 are needs; the rest are wants. This adds the OpenAPI page, Redis, two workers, CI and the Makefile. The map viewer (FR-18, FR-21 to FR-26, NFR-23, NFR-28, NFR-29) and the nginx front door are parked on the branch `viewer`: they are specified but not part of this submission.
 
 **Later:** FR-17.
 
@@ -55,7 +55,7 @@ Each stop is charged $10 while the plan is chosen, standing for the time it take
 
 ## 9. Release criteria
 
-Done means the twenty acceptance checks in `requirements.md` section 9 pass. Checks 1 to 10, the first release's, cover a correct, cached New York to Los Angeles plan; short trips; Los Angeles starts; the four rejected trips; the map; the fuel tests; one-command start; and submission before Friday 20 Nov 2026, 8 pm. Checks 11 to 20, added for the second release, cover the whole stack from one command behind the proxy; cache hits on either worker; a Redis outage; the rate limit against forged addresses; the health, OpenAPI and Swagger addresses; the deployment check and CI; the end-to-end run with no internet; the viewer playing New York to Los Angeles; its fallbacks and accessibility; and the `make` targets.
+Done means the acceptance checks in `requirements.md` section 9 pass, except 18 and 19, which are parked. Checks 1 to 10, the first release's, cover a correct, cached New York to Los Angeles plan; short trips; Los Angeles starts; the four rejected trips; the map; the fuel tests; one-command start; and submission before Friday 20 Nov 2026, 8 pm. Checks 11 to 20, added for the second release, cover the whole stack from one command; cache hits on either worker; a Redis outage; the rate limit against forged addresses; the health, OpenAPI and Swagger addresses; the deployment check and CI; the end-to-end run with no internet; and the `make` targets.
 
 ## 10. Risks and known limits
 

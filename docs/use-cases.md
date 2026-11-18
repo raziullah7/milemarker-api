@@ -13,7 +13,7 @@ Every successful response is also checked against the correctness rules R1 to R1
 | Driver or dispatcher | Plans a truck trip and wants to know where to buy fuel and what it will cost | Any HTTP client: Postman, a browser, curl, an application |
 | Operator | Installs and runs the service, and loads the station data | `manage.py`, Docker Compose |
 | Reviewer | Checks the project: runs it from a clone, runs the tests, tries the requests | git, Docker, uv, Postman |
-| Visitor | Watches a trip drawn on a map | A web browser, at the viewer's address |
+| Visitor | Watches a trip drawn on a map (parked with the viewer) | A web browser, at the viewer's address |
 | Maintainer | Changes the code and pushes it to the repository | git, GitHub, make |
 
 ## Use cases at a glance
@@ -40,20 +40,20 @@ Every successful response is also checked against the correctness rules R1 to R1
 | UC-18 | Send too many requests | Driver or dispatcher |
 | UC-19 | Run the automated tests and lint | Reviewer |
 | UC-20 | Try the API from the Postman collection | Reviewer |
-| UC-21 | Watch a trip in the viewer | Visitor |
-| UC-22 | Open the viewer with no trip and choose an example | Visitor |
-| UC-23 | The viewer when a place is mistyped | Visitor |
-| UC-24 | The viewer when the API refuses the trip | Visitor |
-| UC-25 | The viewer when the API cannot be reached | Visitor |
-| UC-26 | The viewer with reduced motion | Visitor |
-| UC-27 | The viewer without WebGL2 | Visitor |
-| UC-28 | The viewer when the map servers cannot be reached | Visitor |
+| UC-21 | Watch a trip in the viewer (parked) | Visitor |
+| UC-22 | Open the viewer with no trip and choose an example (parked) | Visitor |
+| UC-23 | The viewer when a place is mistyped (parked) | Visitor |
+| UC-24 | The viewer when the API refuses the trip (parked) | Visitor |
+| UC-25 | The viewer when the API cannot be reached (parked) | Visitor |
+| UC-26 | The viewer with reduced motion (parked) | Visitor |
+| UC-27 | The viewer without WebGL2 (parked) | Visitor |
+| UC-28 | The viewer when the map servers cannot be reached (parked) | Visitor |
 | UC-29 | Read the API's documentation page | Driver or dispatcher |
 | UC-30 | Check the service's health | Operator |
-| UC-31 | Call the API through the front door | Driver or dispatcher |
+| UC-31 | Call the API through the front door (parked) | Driver or dispatcher |
 | UC-32 | Ask again for a trip that another worker planned | Driver or dispatcher |
 | UC-33 | The service when Redis is down | Operator |
-| UC-34 | Try to escape the rate limit through the proxy | Driver or dispatcher |
+| UC-34 | Try to escape the rate limit with a forged address | Driver or dispatcher |
 | UC-35 | Follow a request through the logs | Operator |
 | UC-36 | Start the whole stack from a fresh clone | Reviewer |
 | UC-37 | Run the checks with make | Reviewer |
@@ -448,7 +448,7 @@ Every successful response is also checked against the correctness rules R1 to R1
 
 **Alternative flows**
 
-- A1. The viewer (FR-18) draws this same `map` on its own page: see UC-21.
+- A1. The viewer (FR-18, parked) would draw this same `map` on its own page: see UC-21.
 
 **Requirements:** FR-4, D-2
 
@@ -521,7 +521,7 @@ Every successful response is also checked against the correctness rules R1 to R1
 
 ## UC-14 Run the project from a fresh clone
 
-Release 2 supersedes this use case with UC-36: Redis, a one-off setup service and the viewer join the stack, and nginx becomes the only way in. UC-14 stays as release 1.0's, the use case that CT-01 to CT-05, FC-01, FC-04 and M02 were run against.
+Release 2 supersedes this use case with UC-36: Redis and a one-off setup service join the stack. UC-14 stays as release 1.0's, the use case that CT-01 to CT-05, FC-01, FC-04 and M02 were run against.
 
 | | |
 |---|---|
@@ -719,6 +719,8 @@ Release 2 supersedes this use case with UC-36: Redis, a one-off setup service an
 
 ## UC-21 Watch a trip in the viewer
 
+**Not part of this submission.** This section specifies work that is parked on the branch `viewer`. It is kept as that branch's specification.
+
 | | |
 |---|---|
 | Goal | See a trip drawn on a map, with its fuel stops and its figures, as it plays from a globe in space down to the road |
@@ -766,6 +768,8 @@ Release 2 supersedes this use case with UC-36: Redis, a one-off setup service an
 
 ## UC-22 Open the viewer with no trip and choose an example
 
+**Not part of this submission.** This section specifies work that is parked on the branch `viewer`. It is kept as that branch's specification.
+
 | | |
 |---|---|
 | Goal | See what the viewer does, without knowing an address to give it |
@@ -804,6 +808,8 @@ There is no form and no text field: a trip is named only by its address (D-19).
 
 ## UC-23 The viewer when a place is mistyped
 
+**Not part of this submission.** This section specifies work that is parked on the branch `viewer`. It is kept as that branch's specification.
+
 | | |
 |---|---|
 | Goal | Learn which place was not understood, and reopen the viewer with one of the names the API suggests |
@@ -833,6 +839,8 @@ There is no form and no text field: a trip is named only by its address (D-19).
 ---
 
 ## UC-24 The viewer when the API refuses the trip
+
+**Not part of this submission.** This section specifies work that is parked on the branch `viewer`. It is kept as that branch's specification.
 
 | | |
 |---|---|
@@ -864,6 +872,8 @@ There is no form and no text field: a trip is named only by its address (D-19).
 
 ## UC-25 The viewer when the API cannot be reached
 
+**Not part of this submission.** This section specifies work that is parked on the branch `viewer`. It is kept as that branch's specification.
+
 | | |
 |---|---|
 | Goal | Be told plainly that the API cannot be reached, not shown a broken page |
@@ -892,6 +902,8 @@ There is no form and no text field: a trip is named only by its address (D-19).
 
 ## UC-26 The viewer with reduced motion
 
+**Not part of this submission.** This section specifies work that is parked on the branch `viewer`. It is kept as that branch's specification.
+
 | | |
 |---|---|
 | Goal | See the trip without the camera flying |
@@ -917,6 +929,8 @@ There is no form and no text field: a trip is named only by its address (D-19).
 
 ## UC-27 The viewer without WebGL2
 
+**Not part of this submission.** This section specifies work that is parked on the branch `viewer`. It is kept as that branch's specification.
+
 | | |
 |---|---|
 | Goal | Still see the trip, and know why the map is missing, in a browser that cannot draw it |
@@ -941,6 +955,8 @@ There is no form and no text field: a trip is named only by its address (D-19).
 ---
 
 ## UC-28 The viewer when the map servers cannot be reached
+
+**Not part of this submission.** This section specifies work that is parked on the branch `viewer`. It is kept as that branch's specification.
 
 | | |
 |---|---|
@@ -982,7 +998,7 @@ There is no form and no text field: a trip is named only by its address (D-19).
 
 1. The client opens the Swagger page.
 2. The page loads its script from a CDN, at a version pinned in the code, and the OpenAPI document from `/api/v1/schema/`.
-3. It shows `GET /api/v1/route/`: its three parameters, its 200 body, and its 400, 422, 429, 500, 502 and 503 answers in the standard error shape, with every code each can carry, including the `api_unavailable` the proxy sends. The document's opening text describes `not_found` and `method_not_allowed`, which the route itself never answers.
+3. It shows `GET /api/v1/route/`: its three parameters, its 200 body, and its 400, 422, 429, 500, 502 and 503 answers in the standard error shape, with every code each can carry. The document's opening text describes `not_found` and `method_not_allowed`, which the route itself never answers.
 
 **What comes back:** the page. The document behind it is OpenAPI 3.0.3, produced from the code by `drf-spectacular`, and equal to the committed `docs/openapi.yaml` (D-20).
 
@@ -1030,7 +1046,7 @@ There is no form and no text field: a trip is named only by its address (D-19).
 
 - A1. The stations are not loaded: 503 `stations_not_loaded` in the standard error shape. Once they are loaded, 200, with no restart.
 - A2. The client has been rate limited on other addresses: health still answers. It is never limited.
-- A3. In Compose, `api` counts as healthy once this answers within 5 seconds, and `web` waits for that.
+- A3. In Compose, `api` counts as healthy once this answers within 5 seconds.
 
 **Requirements:** FR-20, NFR-16, NFR-18, NFR-22, D-15, D-16
 
@@ -1039,6 +1055,8 @@ There is no form and no text field: a trip is named only by its address (D-19).
 ---
 
 ## UC-31 Call the API through the front door
+
+**Not part of this submission.** This section specifies work that is parked on the branch `viewer`. It is kept as that branch's specification.
 
 | | |
 |---|---|
@@ -1137,28 +1155,27 @@ There is no form and no text field: a trip is named only by its address (D-19).
 
 ---
 
-## UC-34 Try to escape the rate limit through the proxy
+## UC-34 Try to escape the rate limit with a forged address
 
 | | |
 |---|---|
 | Goal | Send more than 60 requests in a minute by giving each a different `X-Forwarded-For`, and be refused all the same |
 | Actor | Driver or dispatcher |
-| Preconditions | The stack is running. The client has sent 60 requests through nginx in the last minute, each with a different `X-Forwarded-For`. |
+| Preconditions | The stack is running. The client has sent 60 requests in the last minute, each with a different `X-Forwarded-For`. |
 | Request | The 61st: `GET http://127.0.0.1:8000/api/v1/route/?start=Dallas, TX` with `X-Forwarded-For: 198.51.100.61` |
 
 **Main flow**
 
 1. The client sends the request.
-2. nginx overwrites `X-Forwarded-For` with the address it saw. It does not add to what the client sent.
-3. The API trusts exactly one proxy, so it counts the address nginx saw: the same for all 61 requests.
-4. It refuses the request before any other work.
+2. `DJANGO_NUM_PROXIES` is 0, so the API ignores `X-Forwarded-For` and counts the address the connection came from: the same for all 61 requests.
+3. It refuses the request before any other work.
 
 **What comes back:** 429 `rate_limited`, with `details.retry_after_seconds` above 0.
 
 **Alternative flows**
 
 - A1. Another client, at another address: it has its own count of 60.
-- A2. The client tries to reach the API past nginx: it cannot, as the API has no published port.
+- A2. A reverse proxy that overwrites `X-Forwarded-For`, if one is put in front, needs `DJANGO_NUM_PROXIES` set to 1.
 - A3. Health requests are never limited (UC-30).
 - A4. Both workers share the counts through Redis. While Redis is down each counts on its own (UC-33).
 
@@ -1175,12 +1192,12 @@ There is no form and no text field: a trip is named only by its address (D-19).
 | Goal | Find every log line about one request, and the summary of each planned trip |
 | Actor | Operator |
 | Preconditions | The stack is running. |
-| Request | Any request through nginx, then `docker compose logs api` |
+| Request | Any request, then `docker compose logs api` |
 
 **Main flow**
 
-1. nginx makes a request ID and passes it to the API as `X-Request-ID`.
-2. The API writes each line about the request with a time, a level and that ID.
+1. The API makes a request ID for the request.
+2. It writes each line about the request with a time, a level and that ID.
 3. For every 200, cache hits included, it writes one line at INFO from the logger `trips`, for example `trip start="New York, NY" finish="Los Angeles, CA" stop_cost=10 miles=2800.6 stops=7 total=867.27 routing_calls=1 cache_hit=false own_ms=19.5`.
 4. The client receives the ID in the response header `X-Request-ID`.
 5. The operator searches the log for it.
@@ -1189,11 +1206,10 @@ There is no form and no text field: a trip is named only by its address (D-19).
 
 **Alternative flows**
 
-- A1. No request ID arrives, as when the API runs from source: the API makes one.
-- A2. The client sends its own `X-Request-ID`: nginx replaces it with its own.
-- A3. The answer is an error: one line at WARNING with its code and no trip figures.
-- A4. `LOG_LEVEL` sets the lowest level written. The default is `INFO`.
-- A5. A worker falls back from Redis: one warning. It goes back: one line (UC-33).
+- A1. The client sends its own `X-Request-ID`: it is kept if it is 1 to 64 letters, digits, `.`, `_` or `-`. Any other is replaced by one the API makes.
+- A2. The answer is an error: one line at WARNING with its code and no trip figures.
+- A3. `LOG_LEVEL` sets the lowest level written. The default is `INFO`.
+- A4. A worker falls back from Redis: one warning. It goes back: one line (UC-33).
 
 **Requirements:** NFR-24, NFR-20
 
@@ -1207,10 +1223,10 @@ This use case supersedes UC-14 for release 2.
 
 | | |
 |---|---|
-| Goal | Start the database, Redis, the API and the viewer from nothing, with one command and no account, key or `.env` |
+| Goal | Start the database, Redis and the API from nothing, with one command and no account, key or `.env` |
 | Actor | Reviewer |
 | Preconditions | git and Docker are installed. |
-| Request | `git clone <repository>`, then `docker compose up --build`, then `http://127.0.0.1:8000/` and `http://127.0.0.1:8000/api/v1/health/` |
+| Request | `git clone <repository>`, then `docker compose up --build`, then `http://127.0.0.1:8000/api/v1/health/` |
 
 **Main flow**
 
@@ -1219,19 +1235,18 @@ This use case supersedes UC-14 for release 2.
 3. Compose starts `db` and `redis`. `db` counts as healthy once PostgreSQL accepts network connections.
 4. `setup` runs once: `migrate`, then `load_stations`, which prints its counts. It exits with code 0.
 5. `api` starts: gunicorn, with two workers of four threads. Each worker loads the places, the borders and the stations into memory. `api` counts as healthy once `/api/v1/health/` answers.
-6. `web`, nginx with the viewer built in, starts once `api` is healthy.
-7. The reviewer opens the viewer and the health address.
+6. The reviewer opens the health address.
 
-**What comes back:** health 200, `{"status": "ok", "stations": 6626, "cache": "redis"}`; the viewer's page at `/`; the API at `http://127.0.0.1:8000/api/v1/route/`, through nginx. Every setting has a default that works, so nothing asks for an account, a key or a `.env`.
+**What comes back:** health 200, `{"status": "ok", "stations": 6626, "cache": "redis"}`; the API at `http://127.0.0.1:8000/api/v1/route/`. Every setting has a default that works, so nothing asks for an account, a key or a `.env`.
 
 **Alternative flows**
 
 - A1. The stack is stopped and started again: `setup` runs again and replaces the table, still 6,626 stations.
-- A2. A port is taken: `API_PORT` moves nginx's, `POSTGRES_PORT` the database's and `REDIS_PORT` Redis's. `BIND_ADDRESS` sets the address nginx is published on; the database and Redis stay on 127.0.0.1.
-- A3. `setup` fails: `api` and `web` do not start.
+- A2. A port is taken: `API_PORT` moves the API's, `POSTGRES_PORT` the database's and `REDIS_PORT` Redis's. All three are published on 127.0.0.1.
+- A3. `setup` fails: `api` does not start.
 - A4. Redis is not running: `api` starts all the same (UC-33).
 - A5. The stack is stopped while a request is in flight: the request finishes, for up to 30 seconds.
-- A6. Docker is not installed: not supported, as PostgreSQL, Redis and nginx run in Docker.
+- A6. Docker is not installed: not supported, as PostgreSQL and Redis run in Docker.
 
 **Requirements:** NFR-5, NFR-9, NFR-10, NFR-19, NFR-20, NFR-21, NFR-22, NFR-25, D-13, D-21, D-23
 
@@ -1251,17 +1266,17 @@ This use case supersedes UC-14 for release 2.
 **Main flow**
 
 1. `make help` lists every target with what it does.
-2. `make lint` runs Ruff.
-3. `make test` runs the suite from source.
+2. `make lint` runs Ruff's check, its format check and the type check.
+3. `make test` runs the suite in a container.
 4. `make up` starts the stack, as in UC-36.
 
-**What comes back:** each exits with code 0, and the stack answers through nginx.
+**What comes back:** each exits with code 0, and the stack answers on `http://127.0.0.1:8000`.
 
 **Alternative flows**
 
 - A1. Make is not installed: the README gives the plain command beside each target.
 - A2. Git Bash, PowerShell or Linux: the same targets work in each.
-- A3. `make check` runs lint, the type check and the tests together; `make audit` audits the Python dependencies; `make dev` runs the API from source on port 8001; `make e2e-up`, `make e2e` and `make e2e-down` run UC-39; `make clean` stops everything and deletes the volumes.
+- A3. `make logs` follows the API's log; `make down` stops the stack; `make dev` runs the API from source on port 8001; `make offline` and `make postman` run UC-39; `make clean` stops everything and deletes the volumes.
 
 **Requirements:** NFR-30, NFR-14, NFR-27
 
@@ -1281,7 +1296,7 @@ This use case supersedes UC-14 for release 2.
 **Main flow**
 
 1. The maintainer pushes.
-2. GitHub Actions runs Ruff's check and format check, the type check, the tests with coverage against its floor, `manage.py check --deploy`, the migration check, the dependency audit, the image build, the end-to-end run, and the viewer's lint, type check, unit tests, build and dependency audit.
+2. GitHub Actions runs Ruff's check and format check, the type check, the tests with coverage against its floor, `manage.py check --deploy`, the migration check, the dependency audit, the image build and the end-to-end run.
 3. Every check passes, and the run is green.
 
 **What comes back:** a green run.
@@ -1292,7 +1307,7 @@ This use case supersedes UC-14 for release 2.
 - A2. Before a commit, pre-commit runs the lint and format checks: Ruff's checks, Ruff's formatter and the file hygiene hooks.
 - A3. Dependabot proposes dependency updates as pull requests, which run CI in turn.
 
-**Requirements:** NFR-17, NFR-21, NFR-26, NFR-27, NFR-28, NFR-31
+**Requirements:** NFR-17, NFR-21, NFR-26, NFR-27, NFR-31
 
 **Test cases:** CI-01 to CI-07, RP-01, RP-03 to RP-06
 
@@ -1302,19 +1317,19 @@ This use case supersedes UC-14 for release 2.
 
 | | |
 |---|---|
-| Goal | Drive the whole stack through nginx, as a client and a browser would, without spending a call to the public routing servers |
+| Goal | Drive the whole stack as a client would, without spending a call to the public routing servers |
 | Actor | Reviewer |
 | Preconditions | Docker is running, and the ordinary stack is stopped. |
-| Request | `make e2e-up`, then `make e2e` and the browser tests, then `make e2e-down`; or the same with `docker compose -f docker-compose.yml -f docker-compose.e2e.yml` and Newman |
+| Request | `make offline`, then `make postman`, then `make down`; or the same with `docker compose -f docker-compose.yml -f docker-compose.e2e.yml` and Newman |
 
 **Main flow**
 
-1. The second Compose file puts the stand-in routing server, the service `fake-osrm`, in place of the public servers, and the API on a network with no route out. The stand-in runs from the test image, which holds the recordings.
+1. The second Compose file gives the API the stand-in routing server, the service `fake-osrm`, as its only routing server. The stand-in runs from the test image, which holds the recordings.
 2. The stand-in answers each route request with the recorded road whose ends match it, and keeps a log of the requests.
-3. Newman runs the whole Postman collection through nginx; every trip in it has a recording. The live-check cases that have recorded roads run with `--routing-host fake-osrm`, so the verifier accepts the stand-in as the routing server. The viewer's browser tests run.
+3. Newman runs the whole Postman collection; every trip in it has a recording. The live-check cases that have recorded roads run with `--routing-host fake-osrm`, so the verifier accepts the stand-in as the routing server.
 4. The stand-in's log is compared with the routing calls expected.
 
-**What comes back:** every check passes. The log holds exactly the expected route requests, each matched to a recording. The API reached nothing outside the stack.
+**What comes back:** every check passes. The log holds exactly the expected route requests, each matched to a recording. The API asked no public routing server.
 
 **Alternative flows**
 
@@ -1352,15 +1367,15 @@ Every requirement and decision in `requirements.md`, with the use cases and test
 | FR-15 | Lowest possible bill beside the plan's | UC-03 | P03, FU-22, FU-23, AN-11, R7 |
 | FR-16 | Caller sets the stop cost; 0 gives the lowest bill | UC-03 | P03, P04, P15, EP-03, EP-12, EP-27, EX-04, R7 |
 | FR-17 | Coordinates as input (Nice) | — | None. Optional, and the architecture gives it no contract. Proven instead by the README listing it as not built; if it is built, its use case and tests are added with it. |
-| FR-18 | The viewer: a separate web page at `/?start=…&finish=…&stop_cost=…`; no link in the response | UC-21, UC-22 | VP-12, VP-13, VB-01 to VB-03, VB-25, PX-18, EE-08 |
+| FR-18 | The viewer: a separate web page at `/?start=…&finish=…&stop_cost=…`; no link in the response (parked) | UC-21, UC-22 | VP-12, VP-13, VB-01 to VB-03, VB-25, PX-18, EE-08 |
 | FR-19 | OpenAPI document at `/api/v1/schema/` and Swagger page at `/api/v1/docs/` | UC-29 | HS-11 to HS-18 |
 | FR-20 | Health endpoint: 200 with stations and cache state, or 503; not rate limited | UC-30 | HS-01 to HS-08, HS-10, HS-19 |
-| FR-21 | Viewer: the trip from its address, asked for once; examples with no trip; no form | UC-21, UC-22 | VP-12, VP-13, VP-14, VP-18, VB-25, VB-26 |
-| FR-22 | Viewer: the animation, Skip, Replay, the scrubber, cancelling the intro | UC-21 | VT-01 to VT-15, VB-01 to VB-11 |
-| FR-23 | Viewer: the panel, each card moving the camera, every figure the API's | UC-21, UC-27 | VP-02 to VP-05, VP-15, VP-16, VP-19, VB-06, VB-12 |
-| FR-24 | Viewer: a message per error code, suggestions as links, retry time, API unreachable | UC-23, UC-24, UC-25 | VP-06 to VP-11, VP-18, VB-23, VB-24 |
-| FR-25 | Viewer: reduced motion, no WebGL2, built-in outlines | UC-22, UC-26, UC-27, UC-28 | VB-13 to VB-16, VB-29, VB-30 |
-| FR-26 | Viewer: the map's sources credited at all times | UC-21, UC-27, UC-28 | VB-14, VB-17, VB-27 |
+| FR-21 | Viewer: the trip from its address, asked for once; examples with no trip; no form (parked) | UC-21, UC-22 | VP-12, VP-13, VP-14, VP-18, VB-25, VB-26 |
+| FR-22 | Viewer: the animation, Skip, Replay, the scrubber, cancelling the intro (parked) | UC-21 | VT-01 to VT-15, VB-01 to VB-11 |
+| FR-23 | Viewer: the panel, each card moving the camera, every figure the API's (parked) | UC-21, UC-27 | VP-02 to VP-05, VP-15, VP-16, VP-19, VB-06, VB-12 |
+| FR-24 | Viewer: a message per error code, suggestions as links, retry time, API unreachable (parked) | UC-23, UC-24, UC-25 | VP-06 to VP-11, VP-18, VB-23, VB-24 |
+| FR-25 | Viewer: reduced motion, no WebGL2, built-in outlines (parked) | UC-22, UC-26, UC-27, UC-28 | VB-13 to VB-16, VB-29, VB-30 |
+| FR-26 | Viewer: the map's sources credited at all times (parked) | UC-21, UC-27, UC-28 | VB-14, VB-17, VB-27 |
 
 ### Non-functional requirements
 
@@ -1374,27 +1389,27 @@ Every requirement and decision in `requirements.md`, with the use cases and test
 | NFR-6 | Fuel algorithm tested against two exact methods and hand cases | UC-19 | FU-01 to FU-25, EX-01, EX-02 |
 | NFR-7 | Stations prepared once; requests read memory | UC-13 | LD-01 to LD-15 |
 | NFR-8 | Readable, small modules; 5-minute walkthrough | UC-19 | PJ-02, M03, M04 |
-| NFR-9 | One Docker command from a fresh clone, now with Redis and the viewer; README | UC-14, UC-36 | FC-01, CT-01, M02, CF-33, MK-10 |
+| NFR-9 | One Docker command from a fresh clone, now with Redis; README | UC-14, UC-36 | FC-01, CT-01, M02, CF-33, MK-10 |
 | NFR-10 | PostgreSQL in Compose, one `DATABASE_URL` | UC-13, UC-14 | PJ-05, CT-01, CT-02, CT-05 |
 | NFR-11 | Repeat answered from cache in under 50 ms | UC-04 | P02, S02 |
 | NFR-12 | Clear error within about 10 s when routing fails | UC-12 | RT-09, RT-10, RT-11, EP-28, EP-29, S04 |
 | NFR-13 | Endpoint, loader and search tests; nothing beyond the local machine | UC-19 | PJ-03, LD-01 to LD-17, CO-01 to CO-17, EP-01 to EP-40 |
 | NFR-14 | Ruff passes | UC-19 | FC-03 |
 | NFR-15 | Postman collection with checks | UC-20 | PM-01, PM-02 |
-| NFR-16 | 60 requests a minute per client, counted by the real client behind the proxy | UC-18, UC-34 | N15, EP-34, PX-07, PX-08, HM-07, HM-08, HS-08, HS-09, CA-14, CA-15 |
+| NFR-16 | 60 requests a minute per client, counted by the connection's address | UC-18, UC-34 | N15, EP-34, PX-07, PX-08, HM-07, HM-08, HS-08, HS-09, CA-14, CA-15 |
 | NFR-17 | CI on every push and pull request | UC-38 | CI-01 to CI-07 |
 | NFR-18 | Caches and rate-limit counters shared in Redis; each process's memory when Redis is down | UC-32, UC-33 | CA-01 to CA-24, HS-03 to HS-05 |
-| NFR-19 | Two workers behind nginx; only nginx published of the two; release 1.0's address still works | UC-31, UC-36 | CF-10, CF-18, CF-32, PX-01, PX-13 |
+| NFR-19 | Two workers; the API, database and Redis published on 127.0.0.1 only; release 1.0's address still works | UC-36 | CF-10, CF-18, CF-32, PX-01, PX-13 |
 | NFR-20 | Configuration from the environment, each with a working default; no key in the code; host checking on | UC-35, UC-36 | CF-01 to CF-11, CF-16, CF-20, CF-34, CF-35 |
 | NFR-21 | `manage.py check --deploy` passes; each check switched off says why | UC-36, UC-38 | CF-12, CI-03 |
 | NFR-22 | Setup once before the API; start order by health checks; a stop lets a request finish | UC-36 | CF-21 to CF-28 |
-| NFR-23 | JSON and the viewer's files compressed | UC-31 | PX-02, PX-03 |
+| NFR-23 | JSON and the viewer's files compressed (parked) | UC-31 | PX-02, PX-03 |
 | NFR-24 | Log lines with time, level and request ID; one line per planned trip | UC-35 | CF-11, CF-13, CF-14, CF-15, CF-36, PX-04 |
 | NFR-25 | Image in stages, holding only what runs, run by a user that cannot write the code | UC-36 | CF-29, CF-30, CF-31, CI-04 |
-| NFR-26 | Stand-in routing server; end-to-end run with no route out | UC-39 | SI-01 to SI-11, EE-01 to EE-07, VR-01, VR-02, MK-16, MK-20, MK-21 |
+| NFR-26 | Stand-in routing server; end-to-end run with only the stand-in as routing server | UC-39 | SI-01 to SI-11, EE-01 to EE-07, VR-01, VR-02, MK-16, MK-20, MK-21 |
 | NFR-27 | Coverage floor, type check, dependency audit; lint and format checks through pre-commit | UC-37, UC-38 | MK-04, MK-08, MK-22, CI-03, RP-04, RP-05 |
-| NFR-28 | Viewer: strict TypeScript, lint, unit and browser tests, accessibility scan, keyboard | UC-21, UC-38 | RP-06, CI-06, VB-18, VB-19 |
-| NFR-29 | Viewer: work per frame independent of route length; pixel density capped at 2 | UC-21 | VT-12, VB-21, VB-22 |
+| NFR-28 | Viewer: strict TypeScript, lint, unit and browser tests, accessibility scan, keyboard (parked) | UC-21, UC-38 | RP-06, CI-06, VB-18, VB-19 |
+| NFR-29 | Viewer: work per frame independent of route length; pixel density capped at 2 (parked) | UC-21 | VT-12, VB-21, VB-22 |
 | NFR-30 | Makefile; `make help`; plain commands in the README | UC-37 | MK-01 to MK-22 |
 | NFR-31 | MIT licence for the code; data files keep their terms | UC-38 | RP-01 |
 
@@ -1403,7 +1418,7 @@ Every requirement and decision in `requirements.md`, with the use cases and test
 | ID | Decision | Use cases | Test cases |
 |---|---|---|---|
 | D-1 | Start empty; buy first at the station nearest the start | UC-01, UC-02, UC-05 | P05, P12, P19, LD-16, LD-17, LD-18, AN-08, EP-38, R6 |
-| D-2 | The map is GeoJSON in the response; the viewer draws that same GeoJSON | UC-11, UC-21 | M01, AN-09, R11, VP-16 |
+| D-2 | The map is GeoJSON in the response; the viewer (parked) would draw that same GeoJSON | UC-11, UC-21 | M01, AN-09, R11, VP-16 |
 | D-3 | City and state, everyday spellings, offline | UC-06, UC-07 | P10, P11, P17, P18, N26, PL-01 to PL-09, PL-20 |
 | D-4 | Lower 48 and DC; under 25 miles abroad in a row | UC-08, UC-09 | N06, N07, N08, N11, N18, N19, N22, PL-15, GE-10 to GE-16, EP-21 to EP-23 |
 | D-5 | Station at its city centre; 5-mile search; named county for spread places | UC-13 | PL-10 to PL-14, LD-07, CO-02 to CO-05 |
@@ -1418,14 +1433,14 @@ Every requirement and decision in `requirements.md`, with the use cases and test
 | D-14 | Rounding: miles 0.1, gallons adjusted to sum, cost half-up to cents | UC-01 | AN-01 to AN-04, AN-10, R3, R4, R14 |
 | D-15 | Road and answer cached for 24 hours, in Redis, keys with a version and the answer's with a station fingerprint | UC-04, UC-32 | P02, P03, P14, P16, EP-02 to EP-08, CA-01 to CA-05, CA-18, CA-20 |
 | D-16 | Redis down: each process answers from its own memory | UC-33 | CA-06 to CA-13, CA-15, CA-21, CA-22, CF-25 |
-| D-17 | Through nginx on one origin; `X-Forwarded-For` overwritten; one proxy trusted; no API port | UC-31, UC-34 | PX-07, PX-08, PX-13, PX-16, HM-07, CF-05, CF-18 |
-| D-18 | MapLibre globe; NASA night lights, OpenFreeMap, Natural Earth outlines; no key | UC-21, UC-28 | VB-15, VB-16, VB-17, VB-27, VB-28, VB-30 |
-| D-19 | The viewer has no form | UC-21, UC-22 | VP-14 |
+| D-17 | Direct, on 127.0.0.1; `DJANGO_NUM_PROXIES` 0, so `X-Forwarded-For` is ignored | UC-34 | PX-07, PX-08, PX-13, PX-16, HM-07, CF-05, CF-18 |
+| D-18 | MapLibre globe; NASA night lights, OpenFreeMap, Natural Earth outlines; no key (parked) | UC-21, UC-28 | VB-15, VB-16, VB-17, VB-27, VB-28, VB-30 |
+| D-19 | The viewer has no form (parked) | UC-21, UC-22 | VP-14 |
 | D-20 | OpenAPI document from `drf-spectacular`; committed copy checked; Swagger script pinned | UC-29 | HS-15, HS-16, HS-17 |
 | D-21 | Host checking on, default hosts; a random secret key when none is set | UC-31, UC-36 | CF-01, CF-02, CF-04, HM-01 to HM-03, PX-15 |
 | D-22 | Two identical new requests at once are both routed | UC-32 | CA-19 |
 | D-23 | Not deployed: no TLS, HSTS or HTTPS redirect here | UC-31, UC-36 | CF-12, PX-17 |
-| D-24 | nginx answers 503 `api_unavailable` when the API is down | UC-25, UC-31 | PX-09, PX-10, VP-11, VB-24 |
+| D-24 | nginx answers 503 `api_unavailable` when the API is down (parked) | UC-25, UC-31 | PX-09, PX-10, VP-11, VB-24 |
 
 ### Acceptance checks 11 to 20
 
@@ -1433,15 +1448,15 @@ Checks 1 to 10 are mapped to their tests in `test-cases.md`, section 8, with the
 
 | Check | Use cases | Test cases |
 |---|---|---|
-| 11. Fresh clone: one Compose command starts everything; the API through the proxy, with no port of its own | UC-36 | CF-33, CF-18, CF-21, CF-22, CF-23, PX-01, PX-13 |
+| 11. Fresh clone: one Compose command starts everything; the API on its published port | UC-36 | CF-33, CF-18, CF-21, CF-22, CF-23, PX-01, PX-13 |
 | 12. Twenty repeats are all cache hits, whichever worker answers | UC-32 | CA-20, CA-01 |
 | 13. Redis stopped: still 200, one warning per worker, health `fallback`; the shared cache returns | UC-33 | CA-21, CA-22, CA-06, CA-10, CA-11, CA-12, HS-04, HS-05 |
 | 14. The 61st request in a minute refused, whatever `X-Forwarded-For` says | UC-34 | PX-07, PX-08, HM-07, HM-08 |
 | 15. Health 200; the OpenAPI document valid and complete; the Swagger page renders | UC-29, UC-30 | HS-01, HS-19, HS-11 to HS-16, HS-18 |
 | 16. `check --deploy` passes; CI green on `main` | UC-36, UC-38 | CF-12, CI-02, CI-07 |
-| 17. End-to-end run passes Postman and the browser tests with no route out | UC-39 | EE-03, EE-05, EE-06 |
-| 18. The viewer plays New York to Los Angeles to its end, with the API's totals | UC-21 | VB-01, VB-04, VB-05, VB-06 |
-| 19. Reduced motion, no WebGL2 and each API error work; no accessibility violation | UC-24, UC-26, UC-27 | VB-13, VB-14, VB-23, VB-24, VP-06, VB-19 |
+| 17. End-to-end run passes Postman with only the stand-in as routing server | UC-39 | EE-03, EE-05, EE-06 |
+| 18. The viewer plays New York to Los Angeles to its end, with the API's totals | UC-21 (parked) | VB-01, VB-04, VB-05, VB-06 |
+| 19. Reduced motion, no WebGL2 and each API error work; no accessibility violation | UC-24, UC-26, UC-27 (parked) | VB-13, VB-14, VB-23, VB-24, VP-06, VB-19 |
 | 20. `make help`, `make test`, `make lint` and `make up` work | UC-37 | MK-01, MK-05, MK-02, MK-10 |
 
 ### Audit rulings with a test
@@ -1452,14 +1467,14 @@ The rulings on the two audits of release 1.0, in `docs/plan/PHASE-9.md`, that ca
 |---|---|---|---|
 | Q0a-01 | The Postman checks walk the stops | UC-39 | EE-07 |
 | Q0a-02 | Published ports on 127.0.0.1 | UC-36 | CF-18, CF-19 |
-| Q0a-03 | A foreign `Host` gets 400 in the error shape; `CommonMiddleware` in place with the slash redirect off | UC-17, UC-31 | HM-02, HM-04, HM-05, HM-06 |
+| Q0a-03 | A foreign `Host` gets 400 in the error shape; `CommonMiddleware` in place with the slash redirect off | UC-17 | HM-02, HM-04, HM-05, HM-06 |
 | Q0a-04 | Two client addresses get separate rate-limit buckets | UC-34 | HM-07, PX-08 |
 | Q0a-06 | Compose passes each variable through; `.env.example` says which process reads which; `API_PORT` added | UC-36 | CF-16, CF-20 |
 | Q0a-11 | `pg_isready -h 127.0.0.1`; `restart: unless-stopped` | UC-36 | CF-18, CF-21 |
 | Q0a-12 | `.env*` ignored, `.env.example` kept | UC-36 | CF-17 |
-| Q0a-15 | The viewer's first card says where its fuel is priced | UC-21 | VP-03 |
+| Q0a-15 | The viewer's first card says where its fuel is priced (parked) | UC-21 | VP-03 |
 | Q0a-21 | Base images pinned by digest | UC-36 | CF-31 |
-| Q0a-24 | One compact JSON form | UC-31 | HM-09 |
+| Q0a-24 | One compact JSON form | UC-17 | HM-09 |
 | Q0a-25 | Eight request slots; the health check outlasts the routing worst case | UC-30, UC-36 | CF-10, CF-28 |
 | Q0b-1 | Verifier rule R17: a station stop lies near a place of its city and state, in the places its caller gives | UC-19 | QB-01, QB-02, VR-03, VR-04 |
 | Q0b-2 | R12 on the line's own scale, within 0.1 mile | UC-19 | QB-02, QB-03 |
