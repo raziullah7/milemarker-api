@@ -19,7 +19,10 @@ from jsonschema import Draft4Validator
 
 from tests.conftest import load_road
 from tests.test_api import TRIP, URL, assert_error
+from tests.test_project import run_new_process
 from trips import errors
+from trips.middleware import GOOD_REQUEST_ID
+from trips.serializers import RouteQuery
 from trips.services import routing
 from trips.services.routing import Route
 
@@ -142,6 +145,63 @@ def test_hs12_the_route_parameters(document):
     assert (stop_cost["schema"]["minimum"], stop_cost["schema"]["maximum"]) == (0, 100)
     assert stop_cost["schema"]["default"] == 10
     assert stop_cost["description"]
+
+
+# The document made in a new process whose RouteQuery has other limits and another default.
+CHANGED_SERIALIZER_SCRIPT = """
+from decimal import Decimal
+import django
+django.setup()
+from django.core.management import call_command
+from rest_framework import serializers
+from trips.serializers import RouteQuery
+RouteQuery._declared_fields["start"] = serializers.CharField(max_length=120)
+RouteQuery._declared_fields["stop_cost"] = serializers.DecimalField(
+    max_digits=6, decimal_places=3, min_value=Decimal("1"), max_value=Decimal("200"),
+    default=Decimal("7.5"),
+)
+call_command("spectacular", "--format", "openapi-json")
+"""
+
+
+def test_hs12_the_parameters_follow_the_serializer():
+    """Q1-08: the document takes each parameter's limits and default from RouteQuery, which
+    checks them, so a changed limit cannot leave the document behind."""
+    result = run_new_process(CHANGED_SERIALIZER_SCRIPT, DJANGO_SETTINGS_MODULE="config.settings")
+    assert result.returncode == 0, result.stderr
+    document = json.loads(result.stdout)
+    parameters = {p["name"]: p for p in operation(document, "/api/v1/route/")["parameters"]}
+
+    assert parameters["start"]["schema"]["maxLength"] == 120
+    assert parameters["finish"]["schema"]["maxLength"] == 100
+    stop_cost = parameters["stop_cost"]
+    limits = {name: stop_cost["schema"][name] for name in ("minimum", "maximum", "default")}
+    assert limits == {"minimum": 1, "maximum": 200, "default": 7.5}
+    assert "1 to 200, at most 3 decimals, 7.5 when left out" in stop_cost["description"]
+
+
+def test_the_place_names_are_trimmed_before_their_length_is_checked(document):
+    """Q1-10: a name padded with spaces past 100 characters is accepted, and the document
+    says why."""
+    padded = " " * 5 + "a" * 100
+    assert RouteQuery(data={"start": padded, "finish": "Houston, TX"}).is_valid()
+
+    parameters = {p["name"]: p for p in operation(document, "/api/v1/route/")["parameters"]}
+    assert "removed before its length is checked" in parameters["start"]["description"]
+    # Ruled out: validators test multipleOf with floating-point division, and would refuse
+    # sound values such as 0.07.
+    assert "multipleOf" not in parameters["stop_cost"]["schema"]
+
+
+def test_the_document_says_which_request_ids_are_kept(document):
+    """Q1-10: "well-formed" was never defined."""
+    sentence = "1 to 64 characters of letters, digits, `.`, `_` and `-`"
+    assert sentence in document["info"]["description"]
+    for path in ("/api/v1/route/", "/api/v1/health/"):
+        for response in operation(document, path)["responses"].values():
+            assert sentence in response["headers"]["X-Request-ID"]["description"]
+    # What the sentence says is what the API does (trips/middleware.py).
+    assert GOOD_REQUEST_ID.pattern == "[A-Za-z0-9._-]{1,64}"
 
 
 @pytest.mark.django_db

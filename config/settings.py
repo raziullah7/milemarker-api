@@ -46,6 +46,11 @@ ALLOWED_HOSTS = [
     for host in _text("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,[::1]").split(",")
     if host.strip()
 ]
+# Always 127.0.0.1, whatever the variable says: the container's health check asks under that
+# name, and set to the deployment's own name alone the API would never be healthy (Q1-02).
+# The API builds no address from the host name, so allowing this one opens nothing.
+if "127.0.0.1" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append("127.0.0.1")
 
 INSTALLED_APPS = [
     "rest_framework",
@@ -141,6 +146,19 @@ else:
 
 # --- Django REST Framework -------------------------------------------------------------
 
+
+def _num_proxies() -> int:
+    """DJANGO_NUM_PROXIES, or 0. Anything but a whole number of 0 or more stops the start,
+    naming the variable and the value: at -1 every request carrying X-Forwarded-For would
+    answer 500 (Q1-07)."""
+    value = _text("DJANGO_NUM_PROXIES", "0")
+    if not value.isdecimal():
+        raise ImproperlyConfigured(
+            f"DJANGO_NUM_PROXIES must be a whole number of 0 or more, not {value!r}."
+        )
+    return int(value)
+
+
 REST_FRAMEWORK = {
     # Every error, ours or the framework's, leaves through one handler in one shape.
     "EXCEPTION_HANDLER": "trips.errors.handler",
@@ -150,13 +168,14 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [],
     "DEFAULT_PERMISSION_CLASSES": [],
     # Per client. It keeps one caller from leaning on the free routing servers through
-    # us; it does not limit all callers together.
-    "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.AnonRateThrottle"],
+    # us; it does not limit all callers together. Ours, not the framework's AnonRateThrottle,
+    # which loses count of requests sent at once (trips/throttling.py).
+    "DEFAULT_THROTTLE_CLASSES": ["trips.throttling.FixedWindowThrottle"],
     "DEFAULT_THROTTLE_RATES": {"anon": "60/min"},
     # How many proxies in front to trust when finding a client's address (D-17). At 0 a
     # client is its connection's address and X-Forwarded-For is ignored. Behind exactly
     # one proxy that overwrites the header, 1: the client is the address it wrote.
-    "NUM_PROXIES": int(_text("DJANGO_NUM_PROXIES", "0")),
+    "NUM_PROXIES": _num_proxies(),
     # Without a declaration the tool can guess nothing about a plain APIView (trips/schema.py).
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
@@ -183,8 +202,9 @@ SPECTACULAR_SETTINGS = {
         "and the method is not GET (HEAD and OPTIONS are left to the framework). Both have "
         "empty `details`.\n\n"
         "**Request ID.** Every answer carries an `X-Request-ID` header, the same ID the "
-        "server writes on its log lines for the request. A request that arrives with a "
-        "well-formed `X-Request-ID` keeps it.\n\n"
+        "server writes on its log lines for the request. A request that arrives with an "
+        "`X-Request-ID` keeps it if it is 1 to 64 characters of letters, digits, `.`, `_` "
+        "and `-`; any other is replaced with one of the server's own.\n\n"
         "**Numbers.** Every number is a JSON number. Unknown query parameters are ignored."
     ),
     "VERSION": "2.0.0",
@@ -255,6 +275,19 @@ BORDERS_FILE = DATA_DIR / "borders.json"
 
 # --- Logging ---------------------------------------------------------------------------
 
+
+def _log_level() -> str:
+    """LOG_LEVEL in capitals, or INFO. Any other name stops the start, naming the variable and
+    the value, rather than leaving the logging library to refuse it without a word of where
+    it came from (Q1-07). gunicorn.conf.py checks it in the same words."""
+    value = _text("LOG_LEVEL", "INFO")
+    if value.upper() not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
+        raise ImproperlyConfigured(
+            f"LOG_LEVEL must be one of DEBUG, INFO, WARNING, ERROR or CRITICAL, not {value!r}."
+        )
+    return value.upper()
+
+
 # Plain lines, each with a time, a level and the ID of the request it was written for, or
 # "-" outside a request (NFR-24). LOG_LEVEL is the lowest level written.
 LOGGING = {
@@ -274,7 +307,7 @@ LOGGING = {
             "filters": ["request_id"],
         }
     },
-    "root": {"handlers": ["console"], "level": _text("LOG_LEVEL", "INFO").upper()},
+    "root": {"handlers": ["console"], "level": _log_level()},
     "loggers": {
         # Each answer is logged once, by the API itself: a trip line, or one WARNING line
         # with the error code (trips/errors.py). Django's own "Bad Request: /api/v1/route/"

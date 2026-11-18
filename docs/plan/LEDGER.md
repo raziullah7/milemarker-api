@@ -84,3 +84,8 @@ Repo: this repository (commit identity must be `Razi Ullah <50240668+raziullah7@
 - Phase 11 task 11S (OpenAPI, Sonnet) dispatched from 3e61a06 with its own test database (`_s`).
 - CI green on f01f5a9 and 3e61a06 (run 44357931847: checks, image, e2e). Phase 12 plan and four briefs written and committed (4424ca8); nothing of Phase 12 is dispatched before Gate 11.
 - Phase 11 task 11S done and checked by the controller: every diff read; 567 tests, coverage 98.76%; lint, format, mypy, the deployment check and `spectacular --validate --fail-on-warn` clean; the image rebuilt and `/api/v1/docs/` opened in a real browser, both operations drawn. Six points ruled in `PHASE-11.md`.
+- CI green on 8edd8e1 (run 44361418290).
+- QA-1 (independent, adversarial) done: 0 Critical, 2 Important, 6 Minor, 7 Notes; the suite noticed all ten safeties it removed. Every finding ruled in `PHASE-11.md`; the architecture corrected first. Fix wave 11F (Opus, fresh) dispatched with `briefs/phase11-F-fixes.md` and its own test database (`_f`).
+- Fix wave 11F done and checked by the controller (see `PHASE-11.md`, "Rulings on the fix wave"): 597 tests, coverage 98.47%; the burst on the live two-worker stack now passes exactly 60 of 300.
+- Quota (the user asked for careful spending, 18 Nov): weekly limit for all models 69% before 11F, 70% after it (one Opus build of 363k tokens and the controller's checks). From here: Opus only for the viewer build and the adversarial reviews; Sonnet for specified fixes, scoped re-reviews, nginx and documents. Reserve: stop new work at 93%.
+- Scoped re-review of the fix wave dispatched (Sonnet, fresh, `_r` test database).

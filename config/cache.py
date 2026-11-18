@@ -9,11 +9,11 @@ Django's default cache when REDIS_URL is set. It knows nothing of what it holds.
   waits for it at most REDIS_DEADLINE_SECONDS: some faults no socket timeout can see, such
   as a name that takes seconds to fail to resolve when the Redis container is stopped. So
   a Redis that is down, hung or gone costs a request at most about half a second.
-- When a call fails to reach Redis, or misses the deadline, memory serves it, and this
-  process falls back to its own memory, logs one warning naming itself, and leaves Redis
-  alone for 30 seconds. Then the next call tries Redis again: a try that fails starts
-  another 30 seconds, and logs nothing new; one that works brings the process back to
-  Redis, and logs one line.
+- When a call fails with any error of the Redis client, or misses the deadline, memory
+  serves it, and this process falls back to its own memory, logs one warning naming
+  itself, and leaves Redis alone for 30 seconds. Then the next call tries Redis again: a
+  try that fails starts another 30 seconds, and logs nothing new; one that works brings
+  the process back to Redis, and logs one line. Only that try can end a fallback.
 - Django makes one cache object per thread. What the threads of one process must share, the
   fallback state, the memory and the pool, is kept per process, in `_processes`.
 """
@@ -30,8 +30,7 @@ from django.core.cache.backends.base import DEFAULT_TIMEOUT, BaseCache
 from django.core.cache.backends.locmem import LocMemCache
 from django.core.cache.backends.redis import RedisCache
 from redis.backoff import NoBackoff
-from redis.exceptions import ConnectionError as RedisConnectionError
-from redis.exceptions import TimeoutError as RedisTimeoutError
+from redis.exceptions import RedisError
 from redis.retry import Retry
 
 logger = logging.getLogger(__name__)
@@ -100,8 +99,8 @@ class RedisWithFallback(BaseCache):
         """Whether this process is on its own memory, Redis having failed."""
         return self._process.falling_back
 
-    # Django's six basic cache operations. Its others (get_many, incr and the rest) are built
-    # on these, so they follow the same path.
+    # Django's six basic cache operations, and incr. Its others (get_many, get_or_set, decr
+    # and the rest) are built on these, so they follow the same path.
 
     def add(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
         """Store a value only if the key is not held yet."""
@@ -127,6 +126,12 @@ class RedisWithFallback(BaseCache):
         """Forget every key: in Redis, its whole database."""
         return self._call("clear")
 
+    def incr(self, key, delta=1, version=None):
+        """Add `delta` to a held number in one atomic step, Redis's INCRBY or memory's own;
+        ValueError if the key is not held. Django would otherwise build it from a read and a
+        write, and increments sent at once, as the rate limit's are, would be lost."""
+        return self._call("incr", key, delta, version=version)
+
     def _call(self, method: str, *args, **kwargs):
         """Run one cache operation on Redis, or on this process's memory while it falls back.
 
@@ -134,33 +139,43 @@ class RedisWithFallback(BaseCache):
         REDIS_DEADLINE_SECONDS. One that misses the deadline is left to finish by itself; its
         result or error is dropped, and memory serves this call, as after a connection error.
         """
-        if self._may_use_redis():
+        where = self._where()
+        if where != "memory":
             call = self._process.pool.submit(getattr(self._redis, method), *args, **kwargs)
             try:
                 result = call.result(timeout=REDIS_DEADLINE_SECONDS)
-            except (RedisConnectionError, RedisTimeoutError) as error:
+            except RedisError as error:
+                # Every error of the Redis client, not only a refused connection or a timeout:
+                # an error Redis answers with, such as a database that does not exist or a
+                # server that is read-only, would otherwise fail every request (Q1-03).
                 self._fall_back(error)
             except TimeoutError:
                 self._fall_back(TimeoutError(f"no answer within {REDIS_DEADLINE_SECONDS} s"))
             else:
-                self._redis_answered()
+                # Only the try ends a fallback. Any other answer is to a call sent before the
+                # fallback began, and says nothing of Redis now (Q1-04).
+                if where == "try":
+                    self._redis_answered()
                 return result
         return getattr(self._process.memory, method)(*args, **kwargs)
 
-    def _may_use_redis(self) -> bool:
-        """True unless this process is inside its 30 seconds away from Redis.
+    def _where(self) -> str:
+        """Where this call goes: "memory" while this process is inside its 30 seconds away
+        from Redis, "try" for the one call that tries Redis again when they are over, and
+        "redis" otherwise.
 
-        When those are over, the first call to ask makes the one try at Redis: the next 30
-        seconds start at once, so the process's other threads keep to memory meanwhile.
+        The try's own 30 seconds start at once, so the process's other threads keep to memory
+        meanwhile.
         """
         process = self._process
         with process.lock:
             now = time.monotonic()
             if now < process.retry_at:
-                return False
+                return "memory"
             if process.falling_back:
                 process.retry_at = now + RETRY_AFTER_SECONDS
-            return True
+                return "try"
+            return "redis"
 
     def _fall_back(self, error: Exception) -> None:
         """Redis failed: keep away from it for 30 seconds, and warn once per outage."""
@@ -180,18 +195,13 @@ class RedisWithFallback(BaseCache):
             )
 
     def _redis_answered(self) -> None:
-        """Redis worked: if this process was falling back, it is back, and says so once."""
+        """The try worked: this process is back on Redis, and says so once. There is one try
+        at a time, made only while the process falls back, so this runs once per outage."""
         process = self._process
-        if not process.falling_back:
-            return
         with process.lock:
-            back = process.falling_back
             process.falling_back = False
             process.retry_at = 0.0
-        if back:
-            logger.info(
-                "Redis answers again. Process %s keeps the cache in Redis again.", os.getpid()
-            )
+        logger.info("Redis answers again. Process %s keeps the cache in Redis again.", os.getpid())
 
 
 def cache_state() -> str:

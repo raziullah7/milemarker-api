@@ -202,7 +202,12 @@ def test_cf04_allowed_hosts():
     given = settings_with(DJANGO_ALLOWED_HOSTS="api.example,api2.example")["ALLOWED_HOSTS"]
 
     assert unset == ["localhost", "127.0.0.1", "[::1]"]
-    assert given == ["api.example", "api2.example"]
+    # Q1-02: 127.0.0.1, the name the container's health check asks under, is always added.
+    assert given == ["api.example", "api2.example", "127.0.0.1"]
+    assert settings_with(DJANGO_ALLOWED_HOSTS="127.0.0.1,api.example")["ALLOWED_HOSTS"] == [
+        "127.0.0.1",
+        "api.example",
+    ]
     # Compose passes the variable through, so on a fresh clone it arrives empty.
     assert settings_with(DJANGO_ALLOWED_HOSTS="")["ALLOWED_HOSTS"] == unset
 
@@ -238,8 +243,8 @@ GUNICORN_SCRIPT = """
 import json, runpy
 c = runpy.run_path("gunicorn.conf.py")
 names = ("workers", "threads", "worker_class", "preload_app", "graceful_timeout",
-         "accesslog", "access_log_format")
-print(json.dumps({name: c[name] for name in names}))
+         "accesslog", "access_log_format", "limit_request_line", "loglevel")
+print(json.dumps({name: c.get(name) for name in names}))
 """
 
 
@@ -264,6 +269,27 @@ def test_cf10_two_workers_of_four_threads_unless_web_concurrency_says_otherwise(
     assert "%({x-request-id}o)s" in default["access_log_format"]
 
 
+def comment_before(path: Path, name: str) -> str:
+    """The comment lines just above the line that sets `name` in `path`, joined."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    at = next(n for n, line in enumerate(lines) if line.startswith(f"{name} ="))
+    comment = []
+    for line in reversed(lines[:at]):
+        if not line.startswith("#"):
+            break
+        comment.insert(0, line.lstrip("# "))
+    return " ".join(comment)
+
+
+def test_gunicorn_takes_request_lines_up_to_its_highest_limit():
+    """Q1-05: gunicorn answers a request line over its limit itself, with an HTML 414 and no
+    request ID. At its default of 4,094 bytes a long address got that, not the API's JSON."""
+    assert gunicorn_settings()["limit_request_line"] == 8190
+    reason = comment_before(ROOT / "gunicorn.conf.py", "limit_request_line")
+    assert "highest" in reason
+    assert "JSON" in reason
+
+
 LOG_SCRIPT = """
 import django, logging
 django.setup()
@@ -284,6 +310,65 @@ def test_cf11_log_level():
     # Each line has a time, a level and the request's ID, "-" outside a request.
     line = r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3} WARNING \[-\] trips: a warning line$"
     assert re.search(line, warning, re.MULTILINE)
+
+
+def test_the_log_level_is_read_in_any_case():
+    variables = {"DJANGO_SETTINGS_MODULE": "config.settings"}
+    lower = run_new_process(LOG_SCRIPT, LOG_LEVEL="warning", **variables)
+
+    assert lower.returncode == 0, lower.stderr
+    assert "an info line" not in lower.stderr
+    assert "a warning line" in lower.stderr
+    assert gunicorn_settings()["loglevel"] == "info"
+    assert gunicorn_settings(LOG_LEVEL="Warning")["loglevel"] == "warning"
+
+
+# Q1-07: values that used to start, or to stop with an error that did not name the variable.
+# At DJANGO_NUM_PROXIES=-1 every request with X-Forwarded-For answered 500; at "abc" the
+# worker stopped with a bare ValueError; at LOG_LEVEL=verbose gunicorn could not set up its
+# logger and restarted again and again; at WEB_CONCURRENCY=0 it listened with no worker.
+BAD_SETTINGS = [
+    ("DJANGO_NUM_PROXIES", "-1"),
+    ("DJANGO_NUM_PROXIES", "abc"),
+    ("DJANGO_NUM_PROXIES", "1.5"),
+    ("LOG_LEVEL", "verbose"),
+]
+BAD_GUNICORN_SETTINGS = [
+    ("WEB_CONCURRENCY", "0"),
+    ("WEB_CONCURRENCY", "-2"),
+    ("WEB_CONCURRENCY", "abc"),
+    ("LOG_LEVEL", "verbose"),
+]
+
+
+def refusal(result: subprocess.CompletedProcess) -> str:
+    """The error a process stopped with: the last line of what it wrote to standard error."""
+    assert result.returncode != 0, result.stdout
+    return result.stderr.strip().splitlines()[-1]
+
+
+@pytest.mark.parametrize(("variable", "value"), BAD_SETTINGS)
+def test_a_bad_value_stops_the_api_naming_the_variable_and_the_value(variable, value):
+    error = refusal(run_new_process(SETTINGS_SCRIPT, **{variable: value}))
+
+    assert error.startswith("django.core.exceptions.ImproperlyConfigured: "), error
+    assert variable in error
+    assert repr(value) in error
+
+
+@pytest.mark.parametrize(("variable", "value"), BAD_GUNICORN_SETTINGS)
+def test_a_bad_value_stops_gunicorn_naming_the_variable_and_the_value(variable, value):
+    error = refusal(run_new_process(GUNICORN_SCRIPT, **{variable: value}))
+
+    assert variable in error
+    assert repr(value) in error
+
+
+def test_gunicorn_and_the_api_refuse_a_log_level_in_the_same_words():
+    api = refusal(run_new_process(SETTINGS_SCRIPT, LOG_LEVEL="verbose"))
+    gunicorn = refusal(run_new_process(GUNICORN_SCRIPT, LOG_LEVEL="verbose"))
+
+    assert api.split(": ", 1)[1] == gunicorn.split(": ", 1)[1]
 
 
 CHECK_SCRIPT = """

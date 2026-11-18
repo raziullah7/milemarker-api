@@ -13,6 +13,7 @@ import time
 import types
 from decimal import ROUND_HALF_UP, Decimal
 from io import StringIO
+from urllib.parse import urlencode
 
 import httpx
 import numpy as np
@@ -831,6 +832,21 @@ def test_stop_cost_minus_zero_is_zero(client, ep01):
     cache.clear()
     plan(client, stop_cost="0")
     assert plan(client, stop_cost="-0")["meta"]["cache_hit"] is True
+
+
+def test_a_5000_byte_address_gets_the_apis_json_answer(client):
+    """Q1-05: gunicorn now passes request lines of up to 8,190 bytes, so an address this long
+    reaches the API, and its answer is the API's own: here the JSON 400 for a place name over
+    100 characters."""
+    finish = urlencode({"finish": "Houston, TX"})
+    padding = 5000 - len(f"{URL}?start=&{finish}")
+    address = f"{URL}?start={'a' * padding}&{finish}"
+    assert len(address.encode()) == 5000
+
+    response = client.get(address)
+
+    assert response["Content-Type"] == "application/json"
+    assert list(assert_error(response, "invalid_request")["fields"]) == ["start"]
 
 
 def test_trailing_slash_is_optional(client, ep01):

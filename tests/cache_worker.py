@@ -11,6 +11,9 @@ It reads one JSON command per line on standard input and answers each with one J
 
     {"get": "/api/v1/route/", "params": {...}}   ->  {"status", "body", "calls"}
     {"advance": 30}                               ->  {}  (the cache's clock moves 30 s on)
+    {"burst": "/api/v1/route/", "params": {...},
+     "threads": 8, "each": 8}                     ->  {"statuses"}  (8 threads that start
+                                                      together send 8 requests each)
 
 Its log lines go to standard error, in the API's own format.
 """
@@ -18,6 +21,7 @@ Its log lines go to standard error, in the API's own format.
 import json
 import os
 import sys
+import threading
 import time
 import types
 from decimal import Decimal
@@ -72,12 +76,36 @@ routing.fetch_route = fake
 moved = [0.0]
 config.cache.time = types.SimpleNamespace(monotonic=lambda: time.monotonic() + moved[0])
 
+
+def burst(path: str, params: dict, threads: int, each: int) -> list[int]:
+    """The statuses of `each` requests from each of `threads` threads that start together,
+    each thread with a client of its own, as a worker's threads answer requests at once."""
+    together = threading.Barrier(threads)
+    statuses: list[int] = []
+
+    def send() -> None:
+        own = Client(HTTP_HOST="127.0.0.1")
+        together.wait()
+        for _ in range(each):
+            statuses.append(own.get(path, params).status_code)
+
+    senders = [threading.Thread(target=send) for _ in range(threads)]
+    for sender in senders:
+        sender.start()
+    for sender in senders:
+        sender.join()
+    return statuses
+
+
 client = Client(HTTP_HOST="127.0.0.1")
 for line in sys.stdin:
     command = json.loads(line)
     if "advance" in command:
         moved[0] += command["advance"]
         reply = {}
+    elif "burst" in command:
+        statuses = burst(command["burst"], command["params"], command["threads"], command["each"])
+        reply = {"statuses": statuses}
     else:
         response = client.get(command["get"], command["params"])
         reply = {

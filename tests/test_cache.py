@@ -21,6 +21,7 @@ application with REDIS_URL set to one of them. "At T + 30 s" moves the cache's c
 import importlib.util
 import json
 import os
+import pickle
 import socket
 import subprocess
 import sys
@@ -254,6 +255,11 @@ class Worker:
     def advance(self, seconds: float) -> None:
         """Move its cache's clock on."""
         self._ask({"advance": seconds})
+
+    def burst(self, threads: int, each: int, params: dict = ROUTING_FREE) -> list[int]:
+        """`each` requests from each of `threads` threads that start together; their statuses."""
+        command = {"burst": URL, "params": params, "threads": threads, "each": each}
+        return self._ask(command)["statuses"]
 
     def stop(self) -> str:
         """End the process; return its log."""
@@ -504,7 +510,88 @@ def test_ca15_during_an_outage_each_worker_counts_alone(workers):
     assert b.get(ROUTING_FREE)["status"] == 400
 
 
+def test_a_burst_across_two_workers_passes_exactly_60(live, workers):
+    """Q1-01: one client's requests at once, on two worker processes of eight threads each,
+    sharing the live Redis. The framework's limiter read a client's history and wrote it back,
+    so requests sent together overwrote each other's entries: the review saw 164 of 300 pass."""
+    a, b = workers(LIVE), workers(LIVE)
+    for worker in (a, b):  # each on Redis, its connections made, before the burst
+        assert worker.get({}, path=HEALTH)["body"]["cache"] == "redis"
+
+    statuses: dict[str, list[int]] = {}
+    senders = [
+        threading.Thread(target=lambda n=name, w=worker: statuses.update({n: w.burst(8, 8)}))
+        for name, worker in (("a", a), ("b", b))
+    ]
+    for sender in senders:
+        sender.start()
+    for sender in senders:
+        sender.join()
+
+    for worker in (a, b):  # neither fell back, so neither counted alone
+        assert worker.get({}, path=HEALTH)["body"]["cache"] == "redis"
+    both = statuses["a"] + statuses["b"]
+    assert len(both) == 128
+    assert (both.count(400), both.count(429)) == (60, 68)
+
+
+def test_the_rate_limit_keys_expire_in_redis(live, use_redis, client):
+    """Q1-01: the window's start lives as long as the window, and the count longer, so the
+    count cannot expire under an increment. Django's Redis increment checks that the key
+    exists and then increments it; a key that expired in between would come back with no
+    expiry at all."""
+    use_redis(LIVE)
+    for _ in range(3):
+        assert client.get(URL, ROUTING_FREE).status_code == 400
+
+    keys = [key.decode() for key in live.keys("*")]
+    [start] = [key for key in keys if "throttle_anon_start_" in key]
+    [count] = [key for key in keys if "throttle_anon_count_" in key]
+    assert 0 < live.ttl(start) <= 60 < live.ttl(count) <= 120
+    assert int(live.get(count)) == 3
+
+
+@pytest.mark.parametrize("on_redis", [True, False], ids=["redis", "own memory"])
+def test_incr_is_one_atomic_step_on_redis_and_on_the_fallback(live, monkeypatch, on_redis):
+    """Q1-01: the limiter counts with incr. The class used to build it from a read and a
+    write, so increments sent at once were lost; now it passes incr through to Redis's own,
+    and to its memory's, each atomic."""
+    monkeypatch.setattr(config.cache, "_processes", {})
+    cache = config.cache.RedisWithFallback(LIVE if on_redis else REFUSING, PARAMS)
+    assert cache.add("count", 0) is True
+    together = threading.Barrier(8)
+
+    def count() -> None:
+        together.wait()
+        for _ in range(50):
+            cache.incr("count")
+
+    threads = [threading.Thread(target=count) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert cache.get("count") == 400
+    assert cache.decr("count", 400) == 0
+    with pytest.raises(ValueError, match="not found"):
+        cache.incr("never-set")
+    # A key that is not held is an answer, not a failure of Redis.
+    assert cache.falling_back is not on_redis
+
+
 # --- CA-16 to CA-19 and CA-24 -------------------------------------------------------------
+
+
+def redis_keys() -> dict[int, set[bytes]]:
+    """The key names in databases 0 to 14 of the live Redis."""
+    return {db: set(redis_db(db).keys("*")) for db in range(15)}
+
+
+def unchanged(before: dict, after: dict) -> bool:
+    """Whether no database but 15 gained a key between the two looks. Names are compared,
+    not counts: a key that expired in between is no change (Q1-06)."""
+    return all(after[db] <= before[db] for db in before)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -512,12 +599,97 @@ def canary():
     """CA-16: a key placed in database 0 before the Redis tests is still there after them,
     and no database but 15 gained a key while they ran."""
     zero = redis_db(0)
-    sizes = {db: redis_db(db).dbsize() for db in range(15)}
+    before = redis_keys()
     zero.set("canary", "still here")
     yield
     assert zero.get("canary") == b"still here"
     zero.delete("canary")
-    assert {db: redis_db(db).dbsize() for db in range(15)} == sizes
+    assert unchanged(before, redis_keys())
+
+
+def test_ca16_a_key_that_expires_while_the_tests_run_is_no_change():
+    """Q1-06: the stack's own keys can expire while the suite runs, a rate-limit count a
+    minute after the stack was last used above all. That is no change; a key that was not
+    there before is. Database 14, which nothing uses; each key lives a second or two, longer
+    than one look at the fifteen databases."""
+    fourteen = redis_db(14)
+    fourteen.set("ca16-expires", "x", px=1000)
+    try:
+        before = redis_keys()
+        while fourteen.exists("ca16-expires"):  # which also removes it, once expired
+            time.sleep(0.05)
+        assert unchanged(before, redis_keys())
+
+        fourteen.set("ca16-new", "x", px=2000)
+        assert not unchanged(before, redis_keys())
+    finally:
+        fourteen.delete("ca16-expires", "ca16-new")
+
+
+def test_a_redis_that_answers_with_an_error_costs_no_request(use_redis, client, caplog, ep01_world):
+    """Q1-03: every error of the Redis client falls back as a refused connection does, not
+    only a refused connection or a timeout. Here Redis answers with an error, because the
+    database asked for does not exist (Redis has 16)."""
+    use_redis(f"{LIVE.rsplit('/', 1)[0]}/99")
+
+    first = client.get(URL, TRIP)
+    second = client.get(URL, TRIP)
+
+    assert (first.status_code, second.status_code) == (200, 200)
+    assert read(second)["meta"]["cache_hit"] is True  # from this process's own memory
+    assert health(client)["cache"] == "fallback"
+    assert [level for level, _ in fallback_lines(caplog)] == ["WARNING"]
+
+
+def test_a_cached_value_that_cannot_be_read_back_is_not_caught(live, monkeypatch):
+    """The ruling on Q1-03 stops at errors of the Redis client. A value that can no longer be
+    read after a change of code is left to raise: CACHE_KEY_VERSION exists for that, and
+    catching every error of a read would hide real faults."""
+    monkeypatch.setattr(config.cache, "_processes", {})
+    cache = config.cache.RedisWithFallback(LIVE, PARAMS)
+    live.set(":1:unreadable", b"not a pickle")
+
+    with pytest.raises(pickle.UnpicklingError):
+        cache.get("unreadable")
+    assert not cache.falling_back
+
+
+def test_a_late_answer_to_a_call_sent_before_the_outage_does_not_end_it(monkeypatch, caplog):
+    """Q1-04, the review's sequence. Call a goes to Redis just before the outage and is slow.
+    Call b, sent after it, is refused, and the process falls back. Then a's answer comes. Only
+    the try made after the 30 seconds can end a fallback: a's answer changes nothing, and the
+    next call keeps to memory. No real Redis: a stand-in answers the calls."""
+    monkeypatch.setattr(config.cache, "_processes", {})
+    cache = config.cache.RedisWithFallback(REFUSING, PARAMS)
+    sent, fallen_back = threading.Event(), threading.Event()
+    asked = []
+
+    class StandIn:
+        """Django's Redis cache, as the outage begins: the first call is slow and answers,
+        every later one is refused."""
+
+        def get(self, key, default=None, version=None):
+            asked.append(key)
+            if len(asked) > 1:
+                raise redis.exceptions.ConnectionError("Connection refused.")
+            sent.set()
+            fallen_back.wait(timeout=0.35)  # within the 0.4-second deadline
+            return "from Redis"
+
+    monkeypatch.setattr(cache, "_redis", StandIn())
+    answers = {}
+    a = threading.Thread(target=lambda: answers.update(a=cache.get("a")))
+    a.start()
+    assert sent.wait(timeout=1)
+    assert cache.get("b", "from memory") == "from memory"
+    fallen_back.set()
+    a.join()
+
+    assert answers["a"] == "from Redis"
+    assert cache.falling_back
+    assert cache.get("c", "from memory") == "from memory"
+    assert asked == ["a", "b"]  # c did not touch Redis
+    assert [level for level, _ in fallback_lines(caplog)] == ["WARNING"]
 
 
 def test_ca17_redis_url_set_for_the_whole_suite_flushes_nothing():

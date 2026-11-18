@@ -65,6 +65,14 @@ QA-1 found 0 Critical, 2 Important, 6 Minor and 7 Notes (`reports/phase11-Q1.md`
 
 Not checked by QA-1, and what covers it: the fresh start from `down -v`, the Postman collection and the repeats across both workers were run by the controller (ledger). The Python base image's digest was pulled by that digest in CI's image job.
 
+### Rulings on the fix wave (11F)
+
+The controller read the diff and reran every check: 597 tests, none skipped, coverage 98.47%; the slow test, lint, format, mypy, the deployment check and the schema validation clean. On the rebuilt end-to-end stack, 300 requests sent 16 at a time by one client: exactly 60 answered 400 and 240 answered 429, shared between the two workers (154 and 153 log lines); with `DJANGO_ALLOWED_HOSTS=api.example` the container stayed healthy, `api.example` got 200 and another name 400.
+
+- Stands: `WEB_CONCURRENCY=abc` is refused by gunicorn itself, before it reads our file, with a message that gives the value but not the variable's name. Why: gunicorn reads that variable as it loads; naming it ourselves would need a wrapper around the start command, for a mistake whose message already shows the bad value. 0 and negative numbers are refused by name.
+- Stands: if the one try after 30 seconds happens to be the limiter's increment of a count Redis does not hold, the process stays on its memory for another 30 seconds. Why: a request's first cache call is a read, so the try is that read in practice; when it does happen the count is still right and the next try returns the process to Redis.
+- Carried to Phase 13: test-case IDs for the 30 new tests, with the other actual results. The response field `assumptions.stop_cost` still spells out the default in its description; corrected with the documents.
+
 ## Gate 11 checklist
 
 - [ ] The controller has read every diff.

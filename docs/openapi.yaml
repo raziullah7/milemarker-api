@@ -9,7 +9,7 @@ info:
 
     **Errors.** Every error, whatever raised it, has one body: `{"error": {"code": "...", "message": "...", "details": {...}}}`. The route lists the statuses it can answer with and the codes each carries. Two codes belong to every address and are not listed on the route. `not_found` (404): there is nothing at the address, whatever the method. `method_not_allowed` (405): the address exists and the method is not GET (HEAD and OPTIONS are left to the framework). Both have empty `details`.
 
-    **Request ID.** Every answer carries an `X-Request-ID` header, the same ID the server writes on its log lines for the request. A request that arrives with a well-formed `X-Request-ID` keeps it.
+    **Request ID.** Every answer carries an `X-Request-ID` header, the same ID the server writes on its log lines for the request. A request that arrives with an `X-Request-ID` keeps it if it is 1 to 64 characters of letters, digits, `.`, `_` and `-`; any other is replaced with one of the server's own.
 
     **Numbers.** Every number is a JSON number. Unknown query parameters are ignored.
 paths:
@@ -28,7 +28,8 @@ paths:
               schema:
                 type: string
               description: The request's ID, as written on the server's log lines
-                for it. A well-formed ID sent with the request is kept.
+                for it. An ID sent with the request is kept if it is 1 to 64 characters
+                of letters, digits, `.`, `_` and `-`.
           content:
             application/json:
               schema:
@@ -47,7 +48,8 @@ paths:
               schema:
                 type: string
               description: The request's ID, as written on the server's log lines
-                for it. A well-formed ID sent with the request is kept.
+                for it. An ID sent with the request is kept if it is 1 to 64 characters
+                of letters, digits, `.`, `_` and `-`.
           content:
             application/json:
               schema:
@@ -92,7 +94,8 @@ paths:
           minLength: 1
           maxLength: 100
         description: 'Where the trip starts, as a city and state: `Dallas, TX`, `Dallas
-          TX` or `Dallas, Texas`. Spaces at either end are removed; it cannot be blank.'
+          TX` or `Dallas, Texas`. Spaces at either end are removed before its length
+          is checked; it cannot be blank.'
         required: true
         examples:
           City:
@@ -118,7 +121,8 @@ paths:
               schema:
                 type: string
               description: The request's ID, as written on the server's log lines
-                for it. A well-formed ID sent with the request is kept.
+                for it. An ID sent with the request is kept if it is 1 to 64 characters
+                of letters, digits, `.`, `_` and `-`.
           content:
             application/json:
               schema:
@@ -302,7 +306,8 @@ paths:
               schema:
                 type: string
               description: The request's ID, as written on the server's log lines
-                for it. A well-formed ID sent with the request is kept.
+                for it. An ID sent with the request is kept if it is 1 to 64 characters
+                of letters, digits, `.`, `_` and `-`.
           content:
             application/json:
               schema:
@@ -351,7 +356,8 @@ paths:
               schema:
                 type: string
               description: The request's ID, as written on the server's log lines
-                for it. A well-formed ID sent with the request is kept.
+                for it. An ID sent with the request is kept if it is 1 to 64 characters
+                of letters, digits, `.`, `_` and `-`.
           content:
             application/json:
               schema:
@@ -400,7 +406,8 @@ paths:
               schema:
                 type: string
               description: The request's ID, as written on the server's log lines
-                for it. A well-formed ID sent with the request is kept.
+                for it. An ID sent with the request is kept if it is 1 to 64 characters
+                of letters, digits, `.`, `_` and `-`.
             Retry-After:
               schema:
                 type: integer
@@ -425,7 +432,8 @@ paths:
               schema:
                 type: string
               description: The request's ID, as written on the server's log lines
-                for it. A well-formed ID sent with the request is kept.
+                for it. An ID sent with the request is kept if it is 1 to 64 characters
+                of letters, digits, `.`, `_` and `-`.
           content:
             application/json:
               schema:
@@ -446,7 +454,8 @@ paths:
               schema:
                 type: string
               description: The request's ID, as written on the server's log lines
-                for it. A well-formed ID sent with the request is kept.
+                for it. An ID sent with the request is kept if it is 1 to 64 characters
+                of letters, digits, `.`, `_` and `-`.
           content:
             application/json:
               schema:
@@ -467,7 +476,8 @@ paths:
               schema:
                 type: string
               description: The request's ID, as written on the server's log lines
-                for it. A well-formed ID sent with the request is kept.
+                for it. An ID sent with the request is kept if it is 1 to 64 characters
+                of letters, digits, `.`, `_` and `-`.
           content:
             application/json:
               schema:

@@ -8,7 +8,11 @@ decorators (trips/views.py); the facts come from the code they describe (archite
 section 11) and the tests hold the document to it (tests/test_schema.py).
 
 The serializers below are only descriptions. Nothing is ever built or validated with them.
+The query parameters' limits and defaults are not written here: they are read from RouteQuery,
+which checks them (trips/serializers.py), so the document cannot fall behind it.
 """
+
+from decimal import Decimal
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
@@ -24,6 +28,8 @@ from rest_framework import serializers
 from rest_framework.exceptions import NotAcceptable
 from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.renderers import JSONRenderer
+
+from trips.serializers import RouteQuery
 
 # --- The two documentation addresses ------------------------------------------------------
 
@@ -75,6 +81,20 @@ def _only(*values: str, help_text: str, required: bool = True) -> serializers.Fi
 
 def _number(help_text: str) -> serializers.FloatField:
     return serializers.FloatField(help_text=help_text)
+
+
+def _text_limits(field: serializers.CharField) -> dict:
+    """A text parameter's schema, with the limits of the field that checks it."""
+    return {
+        "type": "string",
+        "minLength": 0 if field.allow_blank else 1,
+        "maxLength": field.max_length,
+    }
+
+
+def _plain(number: Decimal) -> int | float:
+    """A limit or a default as the document writes it: a whole number has no decimal point."""
+    return int(number) if number == number.to_integral_value() else float(number)
 
 
 # --- The 200 body --------------------------------------------------------------------------
@@ -742,8 +762,8 @@ _REQUEST_ID = OpenApiParameter(
     OpenApiParameter.HEADER,
     response=True,
     description=(
-        "The request's ID, as written on the server's log lines for it. A well-formed ID "
-        "sent with the request is kept."
+        "The request's ID, as written on the server's log lines for it. An ID sent with the "
+        "request is kept if it is 1 to 64 characters of letters, digits, `.`, `_` and `-`."
     ),
 )
 _RETRY_AFTER = OpenApiParameter(
@@ -756,6 +776,13 @@ _RETRY_AFTER = OpenApiParameter(
 
 
 # --- The declarations the views carry ------------------------------------------------------
+
+# The fields that check the route's query parameters, and the stop cost's figures from them.
+_QUERY = RouteQuery().fields
+_STOP_COST = _QUERY["stop_cost"]
+_LEAST = _plain(_STOP_COST.min_value)
+_MOST = _plain(_STOP_COST.max_value)
+_DEFAULT = _plain(_STOP_COST.default)
 
 route_schema = extend_schema(
     operation_id="planRoute",
@@ -770,18 +797,19 @@ route_schema = extend_schema(
     parameters=[
         OpenApiParameter(
             "start",
-            {"type": "string", "minLength": 1, "maxLength": 100},
+            _text_limits(_QUERY["start"]),
             OpenApiParameter.QUERY,
             required=True,
             description=(
                 "Where the trip starts, as a city and state: `Dallas, TX`, `Dallas TX` or "
-                "`Dallas, Texas`. Spaces at either end are removed; it cannot be blank."
+                "`Dallas, Texas`. Spaces at either end are removed before its length is "
+                "checked; it cannot be blank."
             ),
             examples=[OpenApiExample("city", value="New York, NY")],
         ),
         OpenApiParameter(
             "finish",
-            {"type": "string", "minLength": 1, "maxLength": 100},
+            _text_limits(_QUERY["finish"]),
             OpenApiParameter.QUERY,
             required=True,
             description="Where the trip ends, written as `start` is. It must not be the same place as `start`.",
@@ -789,12 +817,13 @@ route_schema = extend_schema(
         ),
         OpenApiParameter(
             "stop_cost",
-            {"type": "number", "minimum": 0, "maximum": 100, "default": 10},
+            {"type": "number", "minimum": _LEAST, "maximum": _MOST, "default": _DEFAULT},
             OpenApiParameter.QUERY,
             required=False,
             description=(
                 "What one stop costs, in dollars, while the plan is chosen: a dearer stop "
-                "means fewer, longer fills. 0 to 100, at most 2 decimals, 10 when left out. "
+                f"means fewer, longer fills. {_LEAST} to {_MOST}, at most "
+                f"{_STOP_COST.decimal_places} decimals, {_DEFAULT} when left out. "
                 "Sent empty it is an error, not the default. Never added to the fuel bill."
             ),
         ),

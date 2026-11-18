@@ -15,6 +15,7 @@ from django.urls import get_resolver
 
 from tests.conftest import SMALL_CSV
 from tests.test_api import TRIP, URL, assert_error, read, without_meta
+from tests.test_project import settings_with
 
 pytestmark = pytest.mark.django_db
 
@@ -70,6 +71,17 @@ def test_hm03_allowed_hosts_from_the_setting(client, settings, small_csv):
 
     assert client.get(HEALTH, headers={"host": "api.example"}).status_code == 200
     assert_refused_host(client.get(HEALTH, headers={"host": "localhost"}))
+
+
+def test_127_0_0_1_is_answered_whatever_the_variable_says(client, settings, small_csv):
+    """Q1-02: the container's health check asks under 127.0.0.1. Set to the deployment's own
+    name alone, the variable would refuse it, and the stack would never be healthy. The host
+    names come from config/settings.py as a new process reads them from the variable."""
+    settings.ALLOWED_HOSTS = settings_with(DJANGO_ALLOWED_HOSTS="api.example")["ALLOWED_HOSTS"]
+
+    assert client.get(HEALTH, headers={"host": "api.example"}).status_code == 200
+    assert client.get(HEALTH, headers={"host": "127.0.0.1"}).status_code == 200
+    assert_refused_host(client.get(HEALTH, headers={"host": "other.example"}))
 
 
 def test_hm04_both_forms_of_the_route_answer_with_no_redirect(client, ep01_world):
