@@ -25,6 +25,13 @@ Baseline: `PLAN.md`, Part 2, Phase 11. The riskiest change of Part 2, so it come
 - Ruling: in this phase the API keeps its published port, on `127.0.0.1`, and `DJANGO_NUM_PROXIES` stays 0 in the Compose file. Why: nginx arrives in Phase 12; until then the API is what the host talks to, and trusting a forwarded address with no proxy in front would reopen the bypass. Phase 12 moves the port to nginx and sets the variable to 1.
 - Ruling: the test suite never sets `REDIS_URL`, so every existing test runs on the in-memory cache. The Redis tests build their own cache object on database 15 of the Redis at `REDIS_TEST_URL` (default `redis://127.0.0.1:6379/15`). Why: the suite empties the cache between tests, which on a shared Redis would be a flush. Cost if wrong: a fault that shows only when the whole application runs on Redis is found by the end-to-end run, not the suite.
 
+### Rulings on 11K's report
+
+- Ruling: every Redis call gets a deadline of 0.4 seconds, kept by the cache class itself, and a call that misses it falls back like one that could not connect. Why: when the Redis container is stopped its name leaves Docker's DNS, and a name lookup has no socket timeout. Measured in a container on the Compose network: a name that does not exist takes 3.99 s to fail, 1.0 s with the resolver options `timeout:1 attempts:1`, and 3.16 s written with a trailing dot. All three break NFR-18's half second, in the very drill the gate asks for. 0.4 s is above the two socket timeouts together (0.1 + 0.25), so those still fire first for every fault they can see. Cost if wrong: one hand-over to a pool thread for each cache call, some tens of microseconds.
+- Ruling: an `X-Request-ID` sent by the client is used only if it is 1 to 64 characters of letters, digits, `.`, `_` and `-`; otherwise the API makes its own. Why: the ID is written into every log line of the request, and the API can be reached with no nginx in front (from source, and in this phase). nginx's own IDs are 32 hexadecimal characters and pass.
+- Ruling: the planner reads the station index before the answer cache, as 11K built it. Why: the answer's key carries the station fingerprint. The one visible difference, an empty station table answering `stations_not_loaded` even when another process cached the trip, is the more honest answer. Architecture section 2 is corrected to match.
+- Noted: 11K ran `git stash push` and `git stash pop` once, against its brief. The controller checked: the stash list is empty and the working tree holds exactly the files the report lists.
+
 ## Gate 11 checklist
 
 - [ ] The controller has read every diff.

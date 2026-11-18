@@ -16,6 +16,11 @@ updates:
     groups:
       docker-images:
         patterns: ["*"]
+    # The Python line is chosen, not drifted into: .python-version and uv.lock name 3.12.
+    # Patch releases and new digests still arrive.
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   # The images named in the Compose files, which the docker entry above does not read.
   - package-ecosystem: docker-compose
@@ -25,6 +30,11 @@ updates:
     groups:
       compose-images:
         patterns: ["*"]
+    # PostgreSQL 17 is a decision (requirements, NFR-10); a new major version changes where
+    # the data lives and is taken on purpose, not by a weekly update.
+    ignore:
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /

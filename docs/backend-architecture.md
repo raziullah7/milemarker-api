@@ -115,8 +115,8 @@ milemarker-api/
 | 1 | Validate input | `serializers.py` | `start` and `finish` are required text. `stop_cost` is an optional decimal with at most 2 decimal places, 0 to 100 inclusive, default 10. Unknown parameters are ignored. |
 | 2 | Resolve places | `stations/places.py` | Offline lookup (section 6). Start is resolved first, so if both are bad the error names `start`. |
 | 3 | Same place | `planner.py` | If both resolve to the same coordinates (to 4 decimals), the request is invalid. The error is reported against `finish`. |
-| 4 | Answer cache | `planner.py` | A hit returns at once (section 10). |
-| 5 | Stations | `stations/index.py` | Load on first use. An empty table is an error, raised before any routing call. Find the station nearest the start place. Several stations often share the nearest position; the cheapest of them is used, then the lowest station ID. |
+| 4 | Stations loaded | `stations/index.py` | Load on first use. An empty table is an error, raised here, before the cache is read and before any routing call. The answer's cache key carries a fingerprint of the stations (section 10), so they come first. |
+| 5 | Answer cache, then the start's station | `planner.py`, `stations/index.py` | A hit returns at once (section 10). Otherwise find the station nearest the start place. Several stations often share the nearest position; the cheapest of them is used, then the lowest station ID. |
 | 6 | Get the road | `routing.py`, `geo.py` | From the road cache, or one routing call (section 9). Then re-space it to one point every half mile, each with its mile marker. |
 | 7 | Border check | `geo.py` | Reject if more than 25 miles in a row lie inside Canada or Mexico (D-4). |
 | 8 | Station search | `corridor.py` | Stations within 5 miles of the road, each with a mile marker (section 7). The start station is left out. |
@@ -347,6 +347,7 @@ The version number is one integer, `CACHE_KEY_VERSION`, in `config/settings.py`,
 The API still answers. Each process falls back to its own memory for both caches and the rate-limit counters, and returns to Redis when it is back. No request fails, or is slowed by more than about half a second, because of Redis (NFR-18).
 
 - **Timeouts.** A connection to Redis times out after 0.1 seconds and a command after 0.25 seconds, with no retries. "About half a second" in NFR-18 is tested as 0.5 seconds: a request with Redis unreachable takes no more than 0.5 seconds longer than the same request with Redis up.
+- **A deadline on every call.** The two timeouts cover a Redis that refuses or hangs. They do not cover looking up its name: when the Redis container is stopped its name leaves Docker's DNS, and the lookup alone took 4 seconds to fail (*measured*, in a container on the Compose network; 1 second with the resolver told to try once for one second). So the cache class runs each Redis call on a small pool of threads and waits for it at most 0.4 seconds, more than the two timeouts together. A call that misses the deadline falls back like one that could not connect, and is left to finish by itself.
 - **Trying again.** A process that has fallen back does not touch Redis for 30 seconds, then tries again. A dead Redis therefore costs one short timeout every 30 seconds, not one per request. A try that fails starts another 30 seconds of fallback.
 - **What is logged.** Each process logs one warning when it falls back, and one line when it returns to Redis. A failed try during the same outage logs nothing new, so a worker logs one warning per outage (acceptance check 13).
 
@@ -713,7 +714,7 @@ An error answer logs one line at WARNING with its code, and no trip figures. The
 
 Each process also logs one warning when it falls back from Redis, and one line when it returns (section 10).
 
-**The request ID** is made by nginx and passed to the API as `X-Request-ID`. nginx replaces any `X-Request-ID` the client sent with its own. If none arrives, as when the API is run from source, the API makes one. It is on every log line about the request, and is returned to the client in the response header `X-Request-ID`.
+**The request ID** is made by nginx and passed to the API as `X-Request-ID`. nginx replaces any `X-Request-ID` the client sent with its own. If none arrives, as when the API is run from source, the API makes one. It also makes one when the ID that arrives is not 1 to 64 characters of letters, digits, `.`, `_` and `-`, because the ID is written into the log and the API can be reached with no nginx in front. It is on every log line about the request, and is returned to the client in the response header `X-Request-ID`.
 
 ### The front door
 
