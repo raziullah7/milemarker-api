@@ -40,3 +40,8 @@ Repo: this repository (commit identity must be `Razi Ullah <50240668+raziullah7@
 - Phase 4 task 4E (the API) reviewed by the controller: one review round (cold start, rounded error miles, always JSON, labels in the cache key, minus zero). Suite 294 passed, run by the controller. First live calls made by the controller: New York to Los Angeles 7 stops, $867.27, own work 19.4 ms; repeat 0 calls; stop_cost=0 gives 19 stops, $855.95.
 - **Phase 4: complete (commit 1565cde).** Gate 4 passed.
 - Phase 5 started. Two independent Opus agents: 5Q1 (verifier, live runner; one full live run allowed) and 5Q2 (read-only review). Briefs: briefs/phase5-Q1-verifier.md, briefs/phase5-Q2-review.md.
+- Phase 5 BASE: 5222f00
+- Phase 5 task 5Q2 (review) done: 0 Critical, 1 Important, 8 Minor, 4 Notes. Report reports/phase5-Q2-review.md. Controller ruled on each; fixes in briefs/phase5-fix-wave.md (F1 to F12).
+- Phase 5 task 5Q1 (verifier, live runner) done: tests/verify.py imports only the standard library; 27 verifier tests; one full live run, 49 of 49 passed, every 200 obeyed R1 to R16. Controller reran the verifier tests (27 passed). Live routing calls so far: about 59 of 100.
+- Ruling: the fix wave is one Opus agent, started only after 5Q1 finished, so the two never edit tests at the same time.
+- Ruling: to stay inside 100 live routing calls, the controller's own full live run happens once, after the fix wave. The Phase 6 container check uses a short list of cases, not the full run.
