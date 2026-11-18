@@ -57,3 +57,5 @@ Repo: this repository (commit identity must be `Razi Ullah <50240668+raziullah7@
 - Phase 7 tasks 7R (README, architecture sections 4 and 14) and 7P (Postman collection) reviewed by the controller. Controller ran Newman: 14 requests, 111 assertions, 0 failed. Controller checked the map in geojson.io in a browser (reduced line). Live routing calls so far: about 91 of 100.
 - **Phase 7: complete (commit 7aecdc6).** Gate 7 passed.
 - Phase 8 started (controller only).
+- Phase 8 done by the controller: tracked files searched; fresh local clone started with one command and answered; suite 348 passed in a container and from source, lint clean; public repository `raziullah7/milemarker-api` created and `main` pushed; a clone from GitHub started and answered; restart over existing data checked. Section 7 of `docs/test-cases.md` filled in. Live routing calls: about 94 of 100.
+- **Phase 8: complete.** Gate 8 passed. Open: the Loom and the submission, which are the candidate's.
