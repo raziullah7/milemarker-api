@@ -13,6 +13,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -56,7 +57,7 @@ TIME_ZONE = "UTC"
 # "docker compose up -d db" followed by "manage.py migrate" works with nothing set.
 DATABASES = {
     "default": dj_database_url.config(
-        default="postgresql://milemarker:milemarker@localhost:5432/milemarker",
+        default="postgresql://milemarker:milemarker@127.0.0.1:5432/milemarker",
         conn_max_age=60,
         conn_health_checks=True,
     )
@@ -96,13 +97,31 @@ REST_FRAMEWORK = {
 
 # --- Routing service -------------------------------------------------------------------
 
+
 # Tried in order: the first is the OSRM public server, the second takes the one retry.
 # They run the same software, but note that their paths differ.
 # {coords} becomes "lng,lat;lng,lat" (longitude first, as OSRM expects).
-ROUTING_SERVERS = [
-    "https://router.project-osrm.org/route/v1/driving/{coords}?overview=full&geometries=geojson",
-    "https://routing.openstreetmap.de/routed-car/route/v1/driving/{coords}?overview=full&geometries=geojson",
-]
+# The environment variable ROUTING_SERVERS replaces both: templates separated by commas, so
+# the end-to-end run can point the API at a stand-in. Empty or blank counts as not set,
+# because Compose passes the variable through even when nothing sets it.
+def _routing_servers() -> list[str]:
+    """The templates from ROUTING_SERVERS, or the two public servers if it is not set."""
+    value = os.environ.get("ROUTING_SERVERS", "")
+    if not value.strip():
+        return [
+            "https://router.project-osrm.org/route/v1/driving/{coords}?overview=full&geometries=geojson",
+            "https://routing.openstreetmap.de/routed-car/route/v1/driving/{coords}?overview=full&geometries=geojson",
+        ]
+    templates = [entry.strip() for entry in value.split(",") if entry.strip()]
+    if not templates:
+        raise ImproperlyConfigured(f"ROUTING_SERVERS has no entry in {value!r}.")
+    for template in templates:
+        if "{coords}" not in template:
+            raise ImproperlyConfigured(f"ROUTING_SERVERS entry {template!r} has no {{coords}}.")
+    return templates
+
+
+ROUTING_SERVERS = _routing_servers()
 
 # Total time allowed for one attempt, from sending the request to reading the last byte.
 ROUTING_DEADLINE_SECONDS = 5.0

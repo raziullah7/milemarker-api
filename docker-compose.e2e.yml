@@ -1,0 +1,41 @@
+# The end-to-end stack: the API with a stand-in routing server instead of the public ones.
+# Used on top of docker-compose.yml, so that nothing in a run reaches the internet.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml up --build -d
+#   curl http://127.0.0.1:5000/_requests          the routing requests the API made, as JSON
+#   curl -X POST http://127.0.0.1:5000/_reset     empty that log (before a run you want to count)
+#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml down
+#
+# Set FAKE_OSRM_PORT if 5000 is already taken. "down" keeps the database; add -v to delete it.
+# The stand-in answers from the recordings in tests/fixtures/roads (see scripts/fake_osrm.py);
+# a trip between two points that were not recorded answers "no road".
+
+services:
+  fake-osrm:
+    # The API image: it holds scripts/ and the recordings, and needs nothing else to run them.
+    build: .
+    command: ["python", "scripts/fake_osrm.py", "--port", "5000"]
+    ports:
+      # On 127.0.0.1 only, so the request log can be read from this machine.
+      - "127.0.0.1:${FAKE_OSRM_PORT:-5000}:5000"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/_health')",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    environment:
+      # The stand-in alone: with no second entry, nothing here can fall back to a public server.
+      # "fake-osrm" is the service name; inside Compose it resolves to that container.
+      ROUTING_SERVERS: http://fake-osrm:5000/route/v1/driving/{coords}?overview=full&geometries=geojson
+    depends_on:
+      fake-osrm:
+        condition: service_healthy

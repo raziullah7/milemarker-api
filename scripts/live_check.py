@@ -9,7 +9,7 @@ names, in the document's own words for the table and as checks for the machine. 
 after them only sends requests, reads answers and compares.
 
 It talks to the server over HTTP and reads the fuel CSV; it imports nothing from the
-application. Every 200 is also checked against rules R1 to R16 by tests/verify.py, and every
+application. Every 200 is also checked against rules R1 to R17 by tests/verify.py, and every
 error against the standard error body of backend-architecture.md, section 11.
 
 Prints one line per case (with --markdown, one table row ready to paste into the document)
@@ -849,6 +849,11 @@ def stop_cost_sent(url: str):
     return dict(split(url)[1]).get("stop_cost")
 
 
+# Routing hosts an answer may name besides the two public ones: set by --routing-host,
+# for a run against a stack that uses a stand-in routing server.
+ROUTING_HOSTS: list[str] = []
+
+
 def examine(case: Case, answer: Answer, prices, done) -> tuple[list[str], list[tuple[str, str]]]:
     """Failures and (figure, actual) pairs for one answer to a case that sends requests."""
     if answer.status == 0:
@@ -857,7 +862,9 @@ def examine(case: Case, answer: Answer, prices, done) -> tuple[list[str], list[t
     if answer.status != case.status:
         failures.append(f"status {answer.status}, expected {case.status}")
     if answer.status == 200 and isinstance(answer.body, dict):
-        failures += verify_response(answer.body, prices, stop_cost_sent(answer.url))
+        failures += verify_response(
+            answer.body, prices, stop_cost_sent(answer.url), routing_hosts=ROUTING_HOSTS
+        )
     elif answer.status != 200:
         failures += [f"error body: {p}" for p in error_body_problems(answer.status, answer.body)]
     figures = []
@@ -915,7 +922,9 @@ def run(case: Case, asker: Asker, prices, done: dict[str, Answer]) -> Outcome:
     for n, answer in enumerate(before, 1):
         if answer.status != 200:
             outcome.failures.append(f"burst request {n}: status {answer.status}, before any 429")
-        elif lines := verify_response(answer.body, prices, stop_cost_sent(answer.url)):
+        elif lines := verify_response(
+            answer.body, prices, stop_cost_sent(answer.url), routing_hosts=ROUTING_HOSTS
+        ):
             outcome.failures += [f"burst request {n}: {line}" for line in lines]
 
     heads = [headline(answer) for answer in answers]
@@ -961,7 +970,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--only", help="comma-separated case IDs, such as P01,N03")
     parser.add_argument("--markdown", action="store_true", help="print table rows")
+    parser.add_argument(
+        "--routing-host",
+        action="append",
+        default=[],
+        help="a routing host the API may name besides the two public ones, such as fake-osrm",
+    )
     args = parser.parse_args(argv)
+    ROUTING_HOSTS[:] = args.routing_host
     # The cases quote the document's "≈" and "÷"; a Windows console would refuse them.
     sys.stdout.reconfigure(encoding="utf-8")
 
