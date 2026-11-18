@@ -28,3 +28,5 @@ Repo: this repository (commit identity must be `Razi Ullah <50240668+raziullah7@
 - Ruling: Phase 3 gets a fifth builder for `trips/services/answer.py` (Opus). Why: it is pure and money-critical, and Phase 4 should be integration only. Cost if wrong: one more agent run.
 - **Phase 2: complete (commits 5d5ec1c, cc39f43).** Gate 2 passed. `stations/sphere.py` built and tested by the controller (GE-01 to GE-05) so the data side and the geometry do not wait on each other.
 - Phase 3 started. Briefs in `briefs/phase3-*.md`. Five builders dispatched in parallel from the commit recorded on the next line: 3A data (Sonnet), 3B geometry and search (Opus), 3C fuel (Opus), 3D routing (Sonnet), 3F answer (Opus). Each owns its own files; none commits.
+- Phase 3 BASE: 56fd7db
+- Phase 3 task 3D (routing client) reviewed by the controller: diff and tests read in full. Three small changes made in review: 'no road' is recognised by its code whatever the status; the clock is also checked when the headers arrive; an empty server list reports reason error. 18 tests pass.
