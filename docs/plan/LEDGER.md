@@ -93,3 +93,5 @@ Repo: this repository (commit identity must be `Razi Ullah <50240668+raziullah7@
 - **Phase 11: complete.** Gate 11 passed, Thursday 19 Nov, about 00:40. `next` merged into `main`. Quota: weekly limit for all models at 70%.
 - `main` and `next` both at 3c55cdf on GitHub; CI run on `main`: 44379472467.
 - Phase 12 started. BASE: 3c55cdf. Three rulings added to `PHASE-12.md`: the trial is judged from its screenshots overnight and on real graphics in the morning; only the viewer's builder runs while the user explores the backend; spending. 12V (Opus) dispatched for the trial, its first part.
+- CI green on `main` at 3c55cdf (run 44379449293). Dependabot closed its two unwanted pull requests itself.
+- 12V Part 1 (the trial) done: the globe, the fly-in and the reveal all draw. The controller read the four screenshots and ruled: build the globe; US state lines from `us-atlas`; the arrival view must still read as night. 12V resumed for Part 2. 12N is held until the user has finished exploring the backend.

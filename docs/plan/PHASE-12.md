@@ -60,9 +60,24 @@ It follows that the viewer loads no script, style or font from another origin: f
 - Ruling: the user explores the backend on this machine for the first hours of this phase. Until the user says so, only the viewer's builder runs: it touches nothing but `web/` and no container. 12N, which rebuilds and restarts containers, starts after that.
 - Ruling, on spending (the user asked on 18 Nov for careful use of the weekly limit, without loss of quality): Opus builds the viewer and runs the two adversarial reviews; Sonnet builds the front door, makes specified fixes and re-reads them. A builder runs each suite once at the end, and the controller once more. The reading is logged at each gate; no new work starts above 93%.
 
+### The trial, and the rulings on it
+
+The trial page drew all three things on the full New York to Los Angeles line (5,594 points), in headless Chromium with the real map servers. The controller read its four screenshots (`web/trial-shots/`, not committed):
+
+- 1 s: the night-side globe on a black page, city lights across the eastern United States, a thin lit rim along the upper edge. It reads as the Earth at night.
+- 5 s: in flight over North America, the lights crisp, a glowing horizon.
+- 10 s and 16 s: arrived and tilted; the route drawn in cyan with seven amber stops, correct and on the road. But the view no longer reads as night: a flat grey road map, dense place names that compete with the route, a thin line, the lower third of the screen given to Mexico and the Gulf, and the map library's light credit box glaring on the dark page.
+
+Frame times were about 135 ms in software drawing, which says nothing of real graphics; three updates a frame, as specified.
+
+- Ruling: **the globe is built.** Why: the three risky things work, the area around the globe is transparent, and what is wrong at arrival is styling, not feasibility. The flat map stays the fallback until the cut line, to be judged on real graphics when the user is back.
+- Ruling: **the US state lines come from `us-atlas`,** the US Census Bureau's cartographic boundaries (public domain), and land and country lines from `world-atlas`, which is Natural Earth. Why: no npm package carries Natural Earth's state lines, and fetching a file from outside npm needs a permission nobody is awake to give. The specification said Natural Earth for both; architecture section 19 is corrected, and the credit names both sources. Cost if wrong: one data file and one credit line to swap.
+- Ruling, for the build: the arrival view must still read as night. The route is the brightest thing on screen; place names are few and dim; the built-in outlines do not show doubled beside the road map's own lines; the route sits in the middle of the map area the panel leaves free; the finish marker is not hidden under the line's head; the credits are styled for a dark page and still always on screen, and name only the sources whose tiles are actually drawn.
+- Found by the trial and carried into the build: the glow needs the style's `light` as well as its `sky`; NASA's tile address is row before column; TypeScript is pinned at 6.0.3, the newest the lint tools accept; shapes cut at the antimeridian must be made continuous.
+
 ## Gate 12 checklist
 
-- [ ] The controller has read the trial's screenshots and recorded what it saw; the frame rate on real graphics is recorded when the user is back.
+- [x] The controller has read the trial's screenshots and recorded what it saw; the frame rate on real graphics is recorded when the user is back.
 - [ ] The controller has read every diff.
 - [ ] Web: `npm run lint`, `npm run typecheck`, `npm test` and `npm run build` are clean.
 - [ ] The backend suite, coverage, the slow test, mypy, Ruff and the deployment check are still clean.

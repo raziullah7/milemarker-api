@@ -869,7 +869,7 @@ Between two points, both are interpolated linearly. The drawn length places the 
 |---|---|
 | The visitor's system asks for reduced motion | Opens on the finished state, with no camera animation (FR-25). On the page with no trip, the globe does not turn |
 | No WebGL2 | A static drawing of the route, the same panel, and a sentence saying why |
-| The map servers cannot be reached | Draws on built-in outlines of land and US state lines from Natural Earth, bundled in the app. The globe and the route still draw |
+| The map servers cannot be reached | Draws on built-in outlines, bundled in the app: land and country lines from Natural Earth, US state lines from the US Census Bureau. The globe and the route still draw |
 | Slow graphics | Pixel density capped at 2, terrain off, three small updates per frame (NFR-29) |
 
 **How the outlines take over.** The built-in outlines are always the bottom layer, under the remote map. The remote map's description (its style) is given 4 seconds to arrive; if it has not, the viewer goes on with the outlines alone, and a description that arrives later is ignored for that page view. A tile that fails later simply does not draw, and the outlines show through.
@@ -882,6 +882,6 @@ The browser tests use the built-in outlines, so they never depend on someone els
 |---|---|---|---|---|
 | NASA night-lights imagery (Black Marble), from NASA GIBS | `gibs.earthdata.nasa.gov` | The globe from space, with MapLibre's atmosphere, on a black page. It fades out as the camera comes down | Public data; no key | NASA GIBS |
 | OpenFreeMap's dark vector style | `tiles.openfreemap.org` | Roads and place names once the camera is low | Free; no key, no account, no view limits | OpenFreeMap, OpenMapTiles, OpenStreetMap |
-| Natural Earth outlines | None: bundled in the app | The bottom layer, the fallback, and the browser tests | Public domain; no credit required | Natural Earth |
+| Built-in outlines: land and country lines from Natural Earth (the `world-atlas` package), US state lines from the US Census Bureau's cartographic boundaries (the `us-atlas` package) | None: bundled in the app | The bottom layer, the fallback, and the browser tests | Public domain; no credit required | Natural Earth, US Census Bureau |
 
 The credits are on screen at all times (FR-26), and they name the sources in use. Without WebGL2 the static drawing uses only the API's data and the built-in outlines, so it credits Natural Earth. The map's credit control stays expanded and shows what each source asks for. The exact wording and links are copied from each provider's own page when the viewer is built, in Phase 12, and recorded together with those pages' addresses.
