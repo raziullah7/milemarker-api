@@ -92,4 +92,9 @@ Frame times were about 135 ms in software drawing, which says nothing of real gr
 
 ## Result
 
-(Filled in when the phase closes.)
+**Parked on 19 Nov 2026, by the owner's decision.** The assignment is for a backend role, and an outside reading of the repository found it far beyond the task. The viewer and the front door are not part of this submission (`PHASE-13.md` records the decision in the owner's words).
+
+- **What exists,** on the branch `viewer` (commit c833b98, not on `main`): the React, TypeScript and Vite scaffold with its six scripts, and the trial page, which draws the night-side globe, flies down to the route and reveals it on the full New York to Los Angeles line. Four screenshots of the trial are kept with it. The builder's report, `reports/phase12-V.md` on that branch, ends with what to do first.
+- **Not built:** the viewer itself (the panel, the timeline, the map module, the animation, the tests), nginx, the `web` service, and the two reviews QA-2 and QA-3.
+- **Never measured:** the frame rate on real graphics.
+- **The gate above was not run.** Its specification stays in the documents, marked as parked, so the branch keeps the text it was being built to.
