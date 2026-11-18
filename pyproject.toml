@@ -30,7 +30,10 @@ python_files = ["test_*.py"]
 # No test may reach beyond this machine. pytest-socket fails any test that opens a
 # connection to anything but localhost. (The PostgreSQL driver connects outside Python's
 # socket module, so the local database is unaffected.)
-addopts = "-ra --disable-socket --allow-hosts=127.0.0.1,::1"
+addopts = "-ra --disable-socket --allow-hosts=127.0.0.1,::1 -m 'not slow'"
+markers = [
+    "slow: the full-size exactness checks; run them with: uv run pytest -m slow",
+]
 
 [tool.ruff]
 line-length = 100

@@ -26,3 +26,5 @@ Repo: this repository (commit identity must be `Razi Ullah <50240668+raziullah7@
 - Phase 2 started. Task 2.1 (uv project, dependencies) was already done.
 - Phase 2 tasks 2.2 to 2.8 done by the controller: Django project, Compose PostgreSQL 17 (container `milemarker-api-db-1`), data files, 17 road fixtures, module skeletons, `tests/conftest.py`, `tests/test_project.py` (10 tests pass).
 - Ruling: Phase 3 gets a fifth builder for `trips/services/answer.py` (Opus). Why: it is pure and money-critical, and Phase 4 should be integration only. Cost if wrong: one more agent run.
+- **Phase 2: complete (commits 5d5ec1c, cc39f43).** Gate 2 passed. `stations/sphere.py` built and tested by the controller (GE-01 to GE-05) so the data side and the geometry do not wait on each other.
+- Phase 3 started. Briefs in `briefs/phase3-*.md`. Five builders dispatched in parallel from the commit recorded on the next line: 3A data (Sonnet), 3B geometry and search (Opus), 3C fuel (Opus), 3D routing (Sonnet), 3F answer (Opus). Each owns its own files; none commits.
