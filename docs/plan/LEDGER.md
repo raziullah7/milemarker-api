@@ -45,3 +45,5 @@ Repo: this repository (commit identity must be `Razi Ullah <50240668+raziullah7@
 - Phase 5 task 5Q1 (verifier, live runner) done: tests/verify.py imports only the standard library; 27 verifier tests; one full live run, 49 of 49 passed, every 200 obeyed R1 to R16. Controller reran the verifier tests (27 passed). Live routing calls so far: about 59 of 100.
 - Ruling: the fix wave is one Opus agent, started only after 5Q1 finished, so the two never edit tests at the same time.
 - Ruling: to stay inside 100 live routing calls, the controller's own full live run happens once, after the fix wave. The Phase 6 container check uses a short list of cases, not the full run.
+- Phase 5 fix wave (5X, Opus) done: F1 to F12, each with a test seen to fail first. Controller read the diff of every application file, corrected one comment in settings, reran the suite (348 passed, slow 1 passed, lint clean).
+- Controller's own full live run: 49 of 49 passed. Results merged into docs/test-cases.md. Seven trips pinned in tests/test_regression.py. Live routing calls so far: about 77 of 100.

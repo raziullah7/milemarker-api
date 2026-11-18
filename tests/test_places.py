@@ -277,6 +277,8 @@ def test_pl14_locate_city():
         "Vancouver, BC",
         "Montreal, Canada",
         "Tijuana, Mexico",
+        "Tijuana Mexico",
+        "Toronto Canada",
     ],
 )
 def test_pl15_outside_coverage(text):
@@ -328,9 +330,11 @@ def test_pl21_error_carries_the_field_and_query():
     assert caught.value.details["query"] == "Chicgo, IL"
 
 
-def test_a_state_name_on_its_own_is_unknown():
+@pytest.mark.parametrize("text", ["Texas", "New Mexico"])
+def test_a_state_name_on_its_own_is_unknown(text):
+    # "New Mexico" ends in "Mexico", but it is a state, not the country.
     with pytest.raises(UnknownPlace):
-        resolve("Texas", "start")
+        resolve(text, "start")
 
 
 def test_use_cities_file_switches_the_table(tmp_path):

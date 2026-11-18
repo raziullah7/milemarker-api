@@ -5,11 +5,12 @@ be reproduced from the response with a calculator. The rules are in the architec
 document, section 8 ("Money and rounding") and section 11 (the response).
 """
 
+import itertools
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 
-from stations.places import Place
-from stations.types import StationInfo
+from stations.types import Place, StationInfo
+from trips.services.corridor import SEARCH_RADIUS_MILES
 from trips.services.fuel import MILES_PER_GALLON, RANGE_MILES, TANK_GALLONS
 from trips.services.geo import RoadPoints
 
@@ -18,9 +19,6 @@ FAR_FIRST_FILL_MILES = 25.0
 
 # A purchase smaller than this is not counted as a stop in the lowest-possible figures.
 SMALLEST_COUNTED_GALLONS = 0.005
-
-# How far either side of the road stations are searched for (trips/services/corridor.py).
-SEARCH_RADIUS_MILES = 5
 
 # Map marker colours, in the "marker-color" property geojson.io reads.
 STOP_COLOUR = "#d9480f"
@@ -69,17 +67,16 @@ def build_answer(
     first_fill_miles  distance from the start place to the station stop 1 is priced at
     stop_cost         the stop cost the plan was chosen with
 
-    Rounding, for the plan and for `cheapest` alike: each purchase's gallons to 2
-    decimals, with any difference from distance_miles / 10 added to the largest
-    purchase; each cost = gallons x exact price, rounded half-up to cents; the total is
-    the sum of the costs.
+    Rounding, for the plan and for `cheapest` alike: gallons to 2 decimals as a running
+    total that ends on distance_miles / 10 exactly; each cost = gallons x exact price,
+    rounded half-up to cents; the total is the sum of the costs.
     """
     distance = _miles(distance_miles)
     # The distance has at most 1 decimal, so the total has at most 2 and is exact.
     total_gallons = _decimal(distance) / _decimal(MILES_PER_GALLON)
     gallons, costs = _bill([(stop.info.price, stop.gallons) for stop in stops], total_gallons)
     # A purchase that rounds to 0.00 gallons is not shown as a stop. Its fuel is not lost:
-    # _bill has already given the difference to the largest purchase. Stop 1 always stays,
+    # it stays in the running total, so a later purchase shows it. Stop 1 always stays,
     # as it is the start.
     kept = [
         (stop, amount, cost)
@@ -147,7 +144,7 @@ def build_answer(
             "tank_gallons": int(TANK_GALLONS),
             "starting_fuel_gallons": 0,
             "stop_cost": float(stop_cost),
-            "search_radius_miles": SEARCH_RADIUS_MILES,
+            "search_radius_miles": int(SEARCH_RADIUS_MILES),
         },
         "fuel_stops": fuel_stops,
         "map": _map(start, finish, distance, road, fuel_stops),
@@ -159,14 +156,17 @@ def _bill(
 ) -> tuple[list[Decimal], list[Decimal]]:
     """Round (exact price, exact gallons) purchases to (gallons, costs) in the response.
 
-    Gallons are rounded half-up to 2 decimals. Rounding can leave them a few hundredths
-    away from total_gallons, so the difference goes to the largest purchase (the earliest,
-    on a tie), where it changes the least. Each cost is then its rounded gallons x its
-    exact price, so anyone can check it from the response.
+    Gallons are rounded as a running total, half-up to 2 decimals: purchase k shows the
+    rounded total of the first k purchases less the rounded total of the first k - 1.
+    The last running total is total_gallons exactly, so the shown gallons add up to it
+    with no adjustment. Rounding a running total never moves it by more than half a
+    hundredth, so a full 50-gallon tank shows as 50.00, never more. Each cost is then its
+    rounded gallons x its exact price, so anyone can check it from the response.
     """
-    gallons = [_half_up(_decimal(amount), CENT) for _, amount in purchases]
-    largest = gallons.index(max(gallons))
-    gallons[largest] += total_gallons - sum(gallons)
+    running = list(itertools.accumulate(_decimal(amount) for _, amount in purchases))
+    running[-1] = total_gallons
+    rounded = [_half_up(total, CENT) for total in running]
+    gallons = [after - before for before, after in itertools.pairwise([Decimal(0), *rounded])]
     costs = [
         _half_up(amount * price, CENT)
         for amount, (price, _) in zip(gallons, purchases, strict=True)

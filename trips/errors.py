@@ -7,6 +7,7 @@ This is the only place that knows which HTTP status a code maps to.
 
 import logging
 
+from django.core.exceptions import SuspiciousOperation
 from django.http import Http404, JsonResponse
 from rest_framework.exceptions import MethodNotAllowed, NotFound, Throttled, ValidationError
 from rest_framework.response import Response
@@ -33,6 +34,7 @@ STATUS_FOR_CODE = {
 
 NOT_FOUND = "There is nothing at this address. Try GET /api/v1/route/?start=...&finish=..."
 INTERNAL_ERROR = "Something went wrong on our side. Please try again later."
+MALFORMED_REQUEST = "The request could not be read: it is too large or malformed."
 
 
 def error_body(code: str, message: str, details: dict | None = None) -> dict:
@@ -69,6 +71,11 @@ def handler(exc: Exception, context: dict) -> Response:
 
     if isinstance(exc, NotFound | Http404):
         return _response("not_found", NOT_FOUND)
+
+    if isinstance(exc, SuspiciousOperation):
+        # Django would not read the request, for example one with more than 1,000
+        # parameters (TooManyFieldsSent). The client's mistake, not ours: no log.
+        return _response("invalid_request", MALFORMED_REQUEST, {"fields": {}})
 
     logger.exception("Unexpected failure while answering a request", exc_info=exc)
     return _response("internal_error", INTERNAL_ERROR)

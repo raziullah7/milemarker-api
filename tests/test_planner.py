@@ -16,13 +16,13 @@ from itertools import pairwise
 
 import pytest
 from django.core.management import call_command
-from django.db import OperationalError
+from django.db import OperationalError, connection
 
 from stations import places
 from stations.index import reset_index
 from tests.conftest import load_road
 from trips.exceptions import RouteLeavesUSA
-from trips.services import planner, routing
+from trips.services import corridor, planner, routing
 from trips.services.planner import plan_trip, warm_up
 from trips.services.routing import Route
 
@@ -121,6 +121,60 @@ def test_seattle_to_miami(recorded_road, use_real_stations):
     assert body["summary"]["stops"] < 12
 
 
+@pytest.mark.parametrize(
+    ("road", "start", "finish", "stop_cost"),
+    [
+        ("nyc_la", "New York, NY", "Los Angeles, CA", "0"),
+        ("nyc_la", "New York, NY", "Los Angeles, CA", "10"),
+        ("nyc_la", "New York, NY", "Los Angeles, CA", "100"),
+        ("bos_sea", "Boston, MA", "Seattle, WA", "100"),
+    ],
+)
+def test_the_shown_gallons_fit_the_tank_exactly(
+    recorded_road, use_real_stations, road, start, finish, stop_cost
+):
+    """Review 5Q2, finding 1. Walked with the figures the response shows, from an empty
+    tank: no purchase above 50.00 gallons, and the tank never below 0.00 or above 50.00,
+    with no allowance for rounding."""
+    recorded_road(road)
+    body = trip(start, finish, Decimal(stop_cost))
+
+    tank, at = Decimal(0), Decimal(0)
+    for stop in body["fuel_stops"]:
+        order, mile, gallons = stop["order"], stop["mile_marker"], stop["gallons"]
+        assert gallons <= 50, f"stop {order} buys {gallons} gallons"
+        tank -= (mile - at) / 10
+        at = mile
+        assert tank >= 0, f"tank at {tank} on reaching stop {order}"
+        tank += gallons
+        assert tank <= 50, f"tank at {tank} after stop {order}"
+    # Every gallon bought is burnt by the finish.
+    assert tank - (body["summary"]["distance_miles"] - at) / 10 == 0
+
+
+def test_the_radius_shown_is_the_radius_searched(recorded_road, use_real_stations, monkeypatch):
+    """Review 5Q2, finding 9: the search radius and the thinning window are each set once,
+    in corridor.py. The planner passes both, and the response shows the radius it used."""
+    used = {}
+    real_stations_along, real_thin = planner.stations_along, planner.thin
+
+    def stations_along(*args, **kwargs):
+        used["radius"] = kwargs["radius_miles"]
+        return real_stations_along(*args, **kwargs)
+
+    def thin(*args, **kwargs):
+        used["window"] = kwargs["window_miles"]
+        return real_thin(*args, **kwargs)
+
+    monkeypatch.setattr(planner, "stations_along", stations_along)
+    monkeypatch.setattr(planner, "thin", thin)
+    recorded_road("dal_hou")
+    body = trip("Dallas, TX", "Houston, TX")
+
+    assert used == {"radius": corridor.SEARCH_RADIUS_MILES, "window": corridor.THIN_WINDOW_MILES}
+    assert body["assumptions"]["search_radius_miles"] == corridor.SEARCH_RADIUS_MILES
+
+
 # --- warm_up() -------------------------------------------------------------------------
 
 
@@ -158,6 +212,17 @@ def test_warm_up_with_no_stations_loaded_raises_nothing(caplog):
     [line] = warm_up_log(caplog)
 
     assert "StationsNotLoaded" in line
+
+
+@pytest.mark.django_db(transaction=True)
+def test_warm_up_closes_its_database_connection():
+    """Review 5Q2, finding 10: the thread that starts the server never serves a request, so
+    a connection left open by warm_up() would sit idle for the life of the process.
+    (Outside a test transaction, so that close() really closes it.)"""
+    start_afresh()
+    warm_up()
+
+    assert connection.connection is None
 
 
 def test_warm_up_with_no_database_raises_nothing(monkeypatch, caplog):

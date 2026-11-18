@@ -92,14 +92,17 @@ def _cents(amount: Decimal) -> Decimal:
     return amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-def test_an01_rounding_shortfall_goes_to_the_largest_purchase():
+def test_an01_gallons_are_rounded_as_a_running_total():
+    # Running totals 10.004, 30.008, 40.000 round to 10.00, 30.01, 40.00.
     road, stops = _plan([10.004, 20.004, 9.992], ["3.00", "3.10", "3.20"], 400.0)
     body = _json(_answer(road, stops))
+    gallons = [s["gallons"] for s in body["fuel_stops"]]
 
-    assert [s["gallons"] for s in body["fuel_stops"]] == [
+    assert gallons == [Decimal("10.00"), Decimal("20.01"), Decimal("9.99")]
+    assert list(itertools.accumulate(gallons)) == [
         Decimal("10.00"),
-        Decimal("20.01"),
-        Decimal("9.99"),
+        Decimal("30.01"),
+        Decimal("40.00"),
     ]
     assert [s["cost"] for s in body["fuel_stops"]] == [
         Decimal("30.00"),
@@ -110,14 +113,17 @@ def test_an01_rounding_shortfall_goes_to_the_largest_purchase():
     assert body["summary"]["gallons"] == Decimal("40.00")
 
 
-def test_an02_rounding_excess_is_taken_from_the_largest_purchase():
+def test_an02_a_running_total_can_round_up_first():
+    # Running totals 10.006, 30.012, 40.000 round to 10.01, 30.01, 40.00.
     road, stops = _plan([10.006, 20.006, 9.988], ["3.00", "3.10", "3.20"], 400.0)
     body = _json(_answer(road, stops))
+    gallons = [s["gallons"] for s in body["fuel_stops"]]
 
-    assert [s["gallons"] for s in body["fuel_stops"]] == [
+    assert gallons == [Decimal("10.01"), Decimal("20.00"), Decimal("9.99")]
+    assert list(itertools.accumulate(gallons)) == [
         Decimal("10.01"),
-        Decimal("20.00"),
-        Decimal("9.99"),
+        Decimal("30.01"),
+        Decimal("40.00"),
     ]
     assert [s["cost"] for s in body["fuel_stops"]] == [
         Decimal("30.03"),
@@ -127,12 +133,23 @@ def test_an02_rounding_excess_is_taken_from_the_largest_purchase():
     assert body["summary"]["total_fuel_cost"] == Decimal("124.00")
 
 
-def test_rounding_tie_for_largest_purchase_goes_to_the_earliest():
-    # Both round to 20.00; the 0.01 short of 40.01 goes to the first of them.
-    road, stops = _plan([20.004, 20.004], ["3.00", "3.10"], 400.1)
+def test_rounding_difference_falls_where_the_running_total_crosses_a_cent():
+    # Running totals 20.004, 30.008, 40.010 round to 20.00, 30.01, 40.01, so the extra
+    # hundredth is shown on the second purchase, not on the largest. Rounded one by one,
+    # all three would round down, and the old rule gave the 0.01 to the 20.004 purchase.
+    road, stops = _plan([20.004, 10.004, 10.002], ["3.00", "3.10", "3.20"], 400.1)
     body = _json(_answer(road, stops))
 
-    assert [s["gallons"] for s in body["fuel_stops"]] == [Decimal("20.01"), Decimal("20.00")]
+    assert [s["gallons"] for s in body["fuel_stops"]] == [
+        Decimal("20.00"),
+        Decimal("10.01"),
+        Decimal("10.00"),
+    ]
+    assert [s["cost"] for s in body["fuel_stops"]] == [
+        Decimal("60.00"),
+        Decimal("31.03"),
+        Decimal("32.00"),
+    ]
     assert body["summary"]["gallons"] == Decimal("40.01")
 
 

@@ -14,6 +14,7 @@ from pathlib import Path
 from django.conf import settings
 
 from stations.exceptions import OutsideCoverage, UnknownPlace
+from stations.types import Place  # kept in types.py, Django-free; stations.places.Place works
 
 MAX_SUGGESTIONS = 5
 
@@ -86,15 +87,6 @@ _NEW_YORK_ALIASES = {"NEWYORKCITY", "NYC", "MANHATTAN"}
 _TRAILING_COUNTRY = re.compile(
     r"[\s,]+(?:USA|US|UNITED\s+STATES(?:\s+OF\s+AMERICA)?)\s*$", re.IGNORECASE
 )
-
-
-@dataclass(frozen=True)
-class Place:
-    """A resolved place. `label` is "City, ST" in the table's own spelling."""
-
-    label: str
-    lat: float
-    lng: float
 
 
 @dataclass(frozen=True)
@@ -226,6 +218,12 @@ def resolve(text: str, field: str) -> Place:
         state = _state_code(state_text)
     else:
         city_text, state = _split_trailing_state(cleaned)
+        # With no comma, a country is the last word: "Tijuana Mexico". Only when no state
+        # matched, so "Santa Fe New Mexico", and "New Mexico" on its own, stay states.
+        words = cleaned.casefold().split()
+        ends_in_country = bool(words) and words[-1] in ("canada", "mexico")
+        if ends_in_country and state is None and _state_code(cleaned) is None:
+            raise outside
 
     if state in OUTSIDE_STATES:
         raise outside

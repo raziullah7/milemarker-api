@@ -9,13 +9,14 @@ from rest_framework import serializers
 class RouteQuery(serializers.Serializer):
     """The query parameters of GET /api/v1/route/. Unknown parameters are ignored.
 
-    start, finish  required text, trimmed, not blank
+    start, finish  required text, trimmed, not blank, at most 100 characters
     stop_cost      optional, 0 to 100 with at most 2 decimals; settings.DEFAULT_STOP_COST
                    when absent. Sent empty, it is an error, not the default.
     """
 
-    start = serializers.CharField()
-    finish = serializers.CharField()
+    # No place name is near 100 characters; the limit keeps the place lookup's work small.
+    start = serializers.CharField(max_length=100)
+    finish = serializers.CharField(max_length=100)
     stop_cost = serializers.DecimalField(
         max_digits=5,
         decimal_places=2,

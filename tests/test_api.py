@@ -27,7 +27,8 @@ from stations.index import reset_index
 from stations.models import FuelStation
 from stations.places import Place
 from tests.conftest import METRES_PER_MILE, SMALL_CSV, load_road
-from tests.test_routing import Fake, slow, timeout
+from tests.test_routing import ZERO_LENGTH_ANSWER, Fake, slow, timeout
+from tests.verify import Listing, verify_response
 from trips import errors
 from trips.services import planner, routing
 from trips.services.routing import Route
@@ -78,8 +79,6 @@ DETAILS_FOR_CODE = {
 }
 
 CENT = Decimal("0.01")
-# Rule R2 allows 0.05 gallons for rounding.
-TANK_SLACK = Decimal("0.05")
 
 
 # --- Test data -----------------------------------------------------------------------
@@ -216,24 +215,36 @@ def assert_error(response, code: str) -> dict:
     return details
 
 
-def assert_sound(body: dict) -> None:
+def listed_prices() -> dict[str, Listing]:
+    """The stations this test created, as the verifier's price list: station ID to its
+    price, name, address, city and state."""
+    return {
+        str(station.opis_id): Listing(
+            station.price, station.name, station.address, station.city, station.state
+        )
+        for station in FuelStation.objects.all()
+    }
+
+
+def assert_sound(body: dict, stop_cost: str | None = None) -> None:
     """The correctness rules (docs/test-cases.md, section 4) these cases lean on: R1 range,
     R2 tank, R3 gallons, R4 money, R6 stops, R7 lowest bill, R8 stop count, R15 meta.
-    The independent verifier of the next phase checks all sixteen."""
+    Then the independent verifier (tests/verify.py) checks all sixteen, against the
+    stations the test created. `stop_cost` is what the request sent, or None."""
     summary, stops, meta = body["summary"], body["fuel_stops"], body["meta"]
     distance = summary["distance_miles"]
     marks = [stop["mile_marker"] for stop in stops]
 
     assert all(b - a <= 500 for a, b in zip(marks, [*marks[1:], distance], strict=True))  # R1
 
-    tank, at = Decimal(0), Decimal(0)  # R2
+    tank, at = Decimal(0), Decimal(0)  # R2, with no allowance for rounding
     for stop in stops:
         tank -= (stop["mile_marker"] - at) / 10
         at = stop["mile_marker"]
-        assert tank >= -TANK_SLACK
+        assert tank >= 0
         tank += stop["gallons"]
-        assert tank <= 50 + TANK_SLACK
-    assert tank - (distance - at) / 10 >= -TANK_SLACK
+        assert tank <= 50
+    assert tank - (distance - at) / 10 >= 0
 
     assert sum(stop["gallons"] for stop in stops) == summary["gallons"] == distance / 10  # R3
 
@@ -264,13 +275,15 @@ def assert_sound(body: dict) -> None:
     assert meta["routing_calls"] > 0 or timings["routing"] == 0
     assert meta["routing_server"] in (SERVER_1, SERVER_2)
 
+    assert verify_response(body, listed_prices(), stop_cost) == []
+
 
 def plan(client, **params) -> dict:
     """GET the route with EP-01's request plus `params`; expect a sound 200 and return it."""
     response = client.get(URL, TRIP | params)
     assert response.status_code == 200, response.content
     body = read(response)
-    assert_sound(body)
+    assert_sound(body, params.get("stop_cost"))
     return body
 
 
@@ -393,6 +406,16 @@ def test_ep10_start_empty_or_blank(client, ep01, start):
     assert ep01.calls == 0
 
 
+@pytest.mark.parametrize("field", ["start", "finish"])
+def test_place_text_over_100_characters(client, ep01, field):
+    """Review 5Q2, finding 12: no place name is that long, and a limit keeps the text the
+    place lookup reads small."""
+    response = client.get(URL, TRIP | {field: "A" * 101})
+
+    assert field in assert_error(response, "invalid_request")["fields"]
+    assert ep01.calls == 0
+
+
 def test_ep11_no_parameters(client, ep01):
     details = assert_error(client.get(URL), "invalid_request")
 
@@ -408,7 +431,7 @@ def test_ep12_stop_cost_limits_are_allowed(client, ep01, stop_cost, shown):
     response = client.get(URL, TRIP | {"stop_cost": stop_cost})
 
     assert response.status_code == 200
-    assert_sound(read(response))
+    assert_sound(read(response), stop_cost)
     # A JSON float, so 0 is written 0.0 and 100 is written 100.0.
     assert repr(json.loads(response.content)["assumptions"]["stop_cost"]) == shown
 
@@ -427,6 +450,21 @@ def test_ep14_unknown_parameters_are_ignored(client, ep01):
 
     cache.clear()
     assert without_meta(plan(client)) == without_meta(with_units)
+
+
+def test_too_many_parameters_is_a_client_error(client, ep01, caplog):
+    """Review 5Q2, finding 6. Django refuses to read more than 1,000 parameters; that is
+    the client's mistake, answered like any bad request and not logged as a failure."""
+    extra = {f"x{n}": "1" for n in range(999)}
+    params = TRIP | extra
+    assert len(params) == 1001
+
+    with caplog.at_level(logging.ERROR):
+        response = client.get(URL, params)
+
+    assert assert_error(response, "invalid_request") == {"fields": {}}
+    assert not [r for r in caplog.records if r.name == errors.__name__]
+    assert ep01.calls == 0
 
 
 # --- EP-15 to EP-20: places ------------------------------------------------------------
@@ -484,6 +522,17 @@ def test_ep20_a_road_under_half_a_mile_is_the_same_place(client, ep01_stations, 
 
     assert "finish" in assert_error(response, "invalid_request")["fields"]
     assert fake.calls == 1
+
+
+def test_ep20_a_road_of_length_zero_is_the_same_place(client, ep01_stations, use_servers):
+    """Review 5Q2, finding 5: a zero-length road from the routing service is a road, so the
+    answer is the same place, after one routing call, not routing_unavailable after two."""
+    zero = httpx.Response(200, json=ZERO_LENGTH_ANSWER)
+    fake = use_servers(Fake(zero, zero))
+    response = client.get(URL, {"start": "Dallas, TX", "finish": "Fort Worth, TX"})
+
+    assert "finish" in assert_error(response, "invalid_request")["fields"]
+    assert len(fake.requests) == 1
 
 
 # --- EP-21 to EP-27: the road and the plan ---------------------------------------------
@@ -631,6 +680,18 @@ def test_ep34_rate_limit(client, ep01):
     details = assert_error(response, "rate_limited")
     assert details["retry_after_seconds"] > 0
     assert response["Retry-After"] == str(details["retry_after_seconds"])
+
+
+def test_ep34_rate_limit_ignores_x_forwarded_for(client, ep01):
+    """Review 5Q2, finding 4: a client cannot pass itself off as another by sending a
+    different X-Forwarded-For header each time."""
+    statuses = [
+        client.get(URL, TRIP, headers={"X-Forwarded-For": f"203.0.113.{n}"}).status_code
+        for n in range(61)
+    ]
+
+    assert 429 not in statuses[:60]
+    assert statuses[60] == 429
 
 
 @pytest.mark.parametrize("method", ["post", "put", "patch", "delete"])

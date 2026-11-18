@@ -16,7 +16,7 @@ from urllib.parse import quote
 import numpy as np
 from django.conf import settings
 from django.core.cache import cache
-from django.db import DatabaseError
+from django.db import DatabaseError, connection
 
 from stations.exceptions import StationsNotLoaded
 from stations.index import get_index, nearest_station
@@ -25,7 +25,13 @@ from stations.types import StationIndex
 from trips.exceptions import InvalidRequest, RouteLeavesUSA
 from trips.services import routing
 from trips.services.answer import Stop, build_answer
-from trips.services.corridor import Candidate, stations_along, thin
+from trips.services.corridor import (
+    SEARCH_RADIUS_MILES,
+    THIN_WINDOW_MILES,
+    Candidate,
+    stations_along,
+    thin,
+)
 from trips.services.fuel import Purchase, cheapest_fuel, find_gap, plan_stops
 from trips.services.geo import RoadPoints, load_borders, longest_run_abroad, resample
 
@@ -107,9 +113,10 @@ def plan_trip(start_text: str, finish_text: str, stop_cost: Decimal) -> dict:
         cache.set(road_key, road, settings.TRIP_CACHE_SECONDS)
 
     # 6. Stations along the road.
-    every_station = _fuel_list(
-        index, start_station, stations_along(road.points, index, exclude=start_station)
+    along = stations_along(
+        road.points, index, radius_miles=SEARCH_RADIUS_MILES, exclude=start_station
     )
+    every_station = _fuel_list(index, start_station, along)
 
     # 7. The free-stops plan. It raises NoFuelPlan if no plan exists at all.
     free_plan = cheapest_fuel(every_station.miles, every_station.prices, road.distance_miles)
@@ -168,6 +175,9 @@ def warm_up() -> None:
             "load them.",
             type(error).__name__,
         )
+    # The thread that starts the server never serves a request, so the connection opened
+    # above would otherwise sit idle for the life of the process.
+    connection.close()
 
 
 def _spot(place: Place) -> str:
@@ -225,7 +235,8 @@ def _plan_with_stop_cost(
     do without. Then it is chosen on every station: slower, but it never reports "no plan"
     wrongly (architecture, section 8).
     """
-    chosen_from = _fuel_list(index, every_station.stations[0], thin(every_station.candidates))
+    thinned = thin(every_station.candidates, window_miles=THIN_WINDOW_MILES)
+    chosen_from = _fuel_list(index, every_station.stations[0], thinned)
     if find_gap(chosen_from.miles, distance_miles) is not None:
         chosen_from = every_station
     purchases = plan_stops(chosen_from.miles, chosen_from.prices, distance_miles, float(stop_cost))

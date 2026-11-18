@@ -44,14 +44,16 @@ def fetch_route(
 ) -> Route:
     """The driving road from `start` to `finish`, each a (lat, lng) pair.
 
-    Tries each server in ROUTING_SERVERS in order, at most one request each. A server is
-    given up on after a timeout, a connection error, a 5xx or 429 status, or an answer
-    that cannot be read as a route. Each attempt has a total deadline of
-    ROUTING_DEADLINE_SECONDS, measured from sending the request to reading its last byte.
+    Tries each server in ROUTING_SERVERS in order, at most one request each. The next
+    server is tried only after a timeout, a connection error, a 5xx or 429 status, or a
+    200 that cannot be read as a route. Each attempt is timed by the HTTP library while
+    connecting and waiting for the answer, and by ROUTING_DEADLINE_SECONDS, from sending
+    the request, while the answer is read (see _attempt).
 
     Raises NoRoute, with no further attempt, if a server answers that no road joins the
-    points. Raises RoutingUnavailable if every server failed: reason "timeout" when every
-    attempt timed out, "error" otherwise.
+    points. Raises RoutingUnavailable, with no further attempt and reason "error", if a
+    server refuses the request with any other status. Raises RoutingUnavailable if every
+    server failed: reason "timeout" when every attempt timed out, "error" otherwise.
 
     `client` is for tests, which pass one built on a fake transport. Without it a shared
     client is used, so connections are reused between requests.
@@ -104,10 +106,14 @@ def _number(value: float) -> str:
 
 
 def _attempt(client: httpx.Client, url: str) -> tuple[np.ndarray, float]:
-    """One request. Returns (points, miles), or raises NoRoute or _AttemptFailed."""
+    """One request. Returns (points, miles), or raises NoRoute, RoutingUnavailable or
+    _AttemptFailed."""
     deadline = time.monotonic() + settings.ROUTING_DEADLINE_SECONDS
-    # httpx timeouts apply to each phase separately, so a server dripping bytes could
-    # outlast them. The clock check while reading the body is what bounds the whole attempt.
+    # httpx timeouts apply to each phase separately (connecting, waiting for the headers,
+    # each read), so a server dripping bytes could outlast them. The clock check bounds the
+    # reading of the body. A server slow both to answer and to send can still keep one
+    # attempt going for about twice the deadline. The phases are not given less: the
+    # servers take up to about 3 seconds to start answering a coast-to-coast request.
     timeouts = httpx.Timeout(settings.ROUTING_DEADLINE_SECONDS)
     try:
         with client.stream("GET", url, timeout=timeouts) as response:
@@ -129,10 +135,12 @@ def _attempt(client: httpx.Client, url: str) -> tuple[np.ndarray, float]:
     # whatever the status, short of a server error.
     if status < 500 and _osrm_code(body) in ("NoRoute", "NoSegment"):
         raise NoRoute("No road joins the start and the finish.")
-    if status != 200:
-        # 5xx and 429 are the server's trouble; any other status is our own bad request,
-        # which the second server would reject too. Either way, this attempt is over.
+    if status >= 500 or status == 429:
+        # The server's own trouble: the other server may answer.
         raise _AttemptFailed(timed_out=False)
+    if status != 200:
+        # A refusal of the request itself, which the other server would refuse too.
+        raise RoutingUnavailable("The routing service refused the request.", reason="error")
     return _read_route(body)
 
 
@@ -152,6 +160,7 @@ def _read_route(body: bytes) -> tuple[np.ndarray, float]:
         metres = float(route["distance"])
     except (ValueError, KeyError, IndexError, TypeError):
         raise _AttemptFailed(timed_out=False) from None
-    if points.ndim != 2 or points.shape[0] < 2 or points.shape[1] != 2 or not metres > 0:
+    # A length of 0 is a route (both points on one spot); the planner decides what it means.
+    if points.ndim != 2 or points.shape[0] < 2 or points.shape[1] != 2 or not metres >= 0:
         raise _AttemptFailed(timed_out=False)
     return points, metres / METRES_PER_MILE

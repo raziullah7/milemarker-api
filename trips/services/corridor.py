@@ -12,6 +12,13 @@ from stations.sphere import arc, chord, to_xyz
 from stations.types import StationIndex
 from trips.services.geo import RoadPoints
 
+# How far either side of the road stations are searched for (D-11). The response reports
+# it in `assumptions`, from this same constant.
+SEARCH_RADIUS_MILES = 5.0
+
+# A station is dropped if a cheaper one is within this many miles along the road.
+THIN_WINDOW_MILES = 10.0
+
 
 @dataclass(frozen=True)
 class Candidate:
@@ -34,7 +41,7 @@ class Candidate:
 def stations_along(
     points: RoadPoints,
     index: StationIndex,
-    radius_miles: float = 5.0,
+    radius_miles: float = SEARCH_RADIUS_MILES,
     exclude: int | None = None,
 ) -> list[Candidate]:
     """Every station within `radius_miles` of the road (inclusive), with its mile marker.
@@ -78,7 +85,7 @@ def stations_along(
     ]
 
 
-def thin(candidates: list[Candidate], window_miles: float = 10.0) -> list[Candidate]:
+def thin(candidates: list[Candidate], window_miles: float = THIN_WINDOW_MILES) -> list[Candidate]:
     """Drop the stations nobody would choose.
 
     A station is dropped if another within `window_miles` along the road (inclusive) is

@@ -147,9 +147,10 @@ The price is stored exactly as the CSV has it (up to 8 decimal places).
 
 ### Loading into memory
 
-`index.py` reads every `FuelStation` once per process, ordered by station ID, the first time a request needs it. It keeps numpy arrays of latitude, longitude and price, the same points on a unit sphere, and each station's details including its exact price.
+`index.py` reads every `FuelStation` once per process, ordered by station ID, the first time it is asked for. It keeps numpy arrays of latitude, longitude and price, the same points on a unit sphere, and each station's details including its exact price.
 
-- It is not loaded at Django start-up, because start-up also runs for `migrate`, when the table may not exist yet.
+- The server asks for it as it starts. `config/wsgi.py`, which only a server goes through, calls `warm_up()`: it loads the places table, the border outlines, the views and the station index, so the first request is as fast as any other (about 20 ms of our own work, against about 290 without it; *measured*). Start-up takes 2 to 3 seconds. `migrate`, `load_stations` and the tests do not go through that file.
+- Because `warm_up()` touches the database, the server must not be run with gunicorn's `--preload` option, which would open the connection before the worker process exists.
 - An empty table is never remembered. If the server starts before the stations are loaded, requests get a clear error until `load_stations` has run, and then work without a restart.
 - After reloading the stations, the server must be restarted to pick up the change.
 
@@ -250,14 +251,14 @@ Both checks are permanent tests (NFR-6):
 Every figure can be reproduced from the response with a calculator (D-14).
 
 1. The trip length `L` is the routing service's distance rounded to 0.1 mile. Total gallons are `L ÷ 10`, which therefore has at most 2 decimals.
-2. Each stop's gallons are rounded to 2 decimals. Any difference between their sum and the total, which can only be a few hundredths, is added to the largest purchase.
+2. The gallons are rounded as a running total: the gallons shown for a stop are the rounded total bought up to and including it, less the rounded total before it. The shown gallons therefore add up to the total exactly, and no shown purchase is more than the tank holds.
 3. A stop's price is the CSV's own figure with nothing rounded away (for example 3.00733333).
 4. A stop's cost is its gallons × its price, rounded half-up to cents. This is done in decimal arithmetic, not floating point.
 5. The total is the sum of the stop costs.
 
 Two small rules keep the figures sensible:
 
-- A purchase that rounds to 0.00 gallons is not shown as a stop. Its fuel is not lost, because step 2 has already moved the difference to the largest purchase. The fill-up at the start is always shown.
+- A purchase that rounds to 0.00 gallons is not shown as a stop. Its fuel is not lost, because the running total of step 2 carries it into the next stop. The fill-up at the start is always shown.
 - The lowest possible bill is never shown above the plan's bill. Each bill is rounded stop by stop, so two plans within a cent of each other can swap order after rounding. The plan's bill can be bought, so it is the lowest in that case.
 
 ## 9. The routing service
@@ -278,8 +279,9 @@ Both templates are settings, and each has its own test.
 | Dallas to Houston, full road | 0.8 s, 2,435 points; the second server returned the identical route |
 
 - **`overview=full` is required.** The default "simplified" road has 55 points for New York to Los Angeles and comes out 154 miles short, which would put every mile marker in the wrong place.
-- **When the second server is tried:** after a timeout, a connection error, a 5xx or 429 status, or an answer that cannot be read as a route. Each attempt has a total deadline of 5 seconds, so the worst case is two calls (NFR-2) and about 10 seconds (NFR-12).
-- **When it is not:** if the server answers that no road exists between the points, that is the answer. The second server would say the same.
+- **When the second server is tried:** after a timeout, a connection error, a 5xx or 429 status, or an answer that cannot be read as a route. The deadline is 5 seconds per attempt, so a server that does not answer costs two calls (NFR-2) and about 10 seconds (NFR-12).
+- **What the deadline bounds.** The HTTP library times connecting and waiting for the answer separately, and our own clock is checked as the answer is read. An attempt whose server is slow both to answer and to send can therefore run to about twice the deadline. The timeouts are not made shorter, because a coast-to-coast request takes up to about 3 seconds to start answering.
+- **When it is not:** if the server answers that no road exists between the points, that is the answer. Any other refusal of the request itself (a 4xx status) ends it with `routing_unavailable`. In both cases the second server would say the same.
 - **If both fail:** one error, `routing_unavailable`. Its reason is `timeout` only when every attempt timed out, and `error` otherwise.
 - **One shared HTTP client** (`httpx`) keeps the connection open between requests, so later calls skip the connection set-up.
 - **A User-Agent naming the app** is sent, because the second server's rules ask applications to identify themselves. It is a setting.
@@ -299,11 +301,11 @@ Two caches, both in Django's cache framework with the in-memory backend, both fo
 | Cache | Key | Holds | Effect |
 |---|---|---|---|
 | Road | Start and finish coordinates, 4 decimals | The re-spaced road, its length, and the server that supplied it | The same trip with a different stop cost makes no routing call |
-| Answer | The road key plus the stop cost to 2 decimals | The response body without `meta` | A repeated request skips all the arithmetic too (NFR-11) |
+| Answer | The road key, both place labels, and the stop cost to 2 decimals | The response body without `meta` | A repeated request skips all the arithmetic too (NFR-11) |
 
 - `meta` is rebuilt for every response. `cache_hit` says whether the answer came from the answer cache. When only the road was cached, `cache_hit` is false and `routing_calls` is 0. `timings_ms.routing` is 0 whenever no routing call was made.
-- Place labels come from the current request's lookup. They are always the table's own spelling, so `new york ny` and `New York, NY` produce the same answer.
-- Errors are not cached.
+- Place labels are part of the answer key, because two places can share coordinates (Ackermanville and Flicksville, PA do). They are always the table's own spelling, so `new york ny` and `New York, NY` share one cached answer.
+- Errors are not cached. A road that is refused, for leaving the USA or having no fuel plan, is asked for again each time the trip is requested.
 
 The in-memory cache belongs to one process. The API is run as one process with several threads, so every repeat is a hit. Running several processes needs a shared cache (NFR-18).
 
@@ -418,7 +420,7 @@ Only GET is specified. HEAD and OPTIONS are left to the framework's defaults; ev
 
 Left out on purpose: pandas (the `csv` module handles 8,151 rows), django-environ (settings are read with `os.environ`), and any API key.
 
-**Settings from the environment:** `DATABASE_URL`, `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`. Each has a default that works with the Compose file. `.env.example` lists them. The database password in the Compose file is a local development default, not a secret.
+**Settings from the environment:** `DATABASE_URL`, `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`. Each has a default that works with the Compose file. Any host name is accepted: the API has no middleware that reads the Host header, builds no absolute address from it, and has no cookies or sessions to protect. `.env.example` lists them. The database password in the Compose file is a local development default, not a secret.
 
 **Settings in code:** the two routing server templates, the 5-second deadline, the User-Agent, the default stop cost, the cache timeout, the rate limit.
 
@@ -480,10 +482,12 @@ Each figure is a single run of a research script on this machine, not an average
 - **Car routing, not truck routing.** The free server has no truck profile, so low bridges and truck bans are ignored.
 - **Places are cities.** Street addresses, ZIP codes and coordinates are not understood.
 - **The routing servers are free demos** with no uptime promise. The second server covers a failure of the first, not of both.
+- **The routing deadline is not strict.** An attempt can run to about twice its 5 seconds if the server is slow both to answer and to send (section 9).
+- **Two identical new requests arriving together both call the routing server.** Nothing makes the second wait for the first, so "none on repeat" in NFR-2 holds for requests that come one after another.
+- **The rare fallback is slow.** When the shortened station list has no plan, the plan is chosen from every station, which takes 150 to 300 ms coast to coast (*measured*) and so exceeds NFR-1 for that request.
 - **The cache is per process** unless a shared cache is added.
 - **Border outlines are coarse.** A road that follows the border can register up to 10 miles as abroad (*measured*), which is why the limit is 25.
 - **Docker is needed** to run PostgreSQL.
-- **Not yet checked:** that the response's map draws correctly in geojson.io for a coast-to-coast trip. It will be checked as soon as the API returns one.
 
 ## 17. Build order
 

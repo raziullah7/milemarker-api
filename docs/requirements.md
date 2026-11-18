@@ -77,7 +77,7 @@ The speed targets come from measurements on a 2,800-mile route. They will be rep
 | ID | Requirement | Tier | From |
 |---|---|---|---|
 | NFR-1 | **Speed, new request.** Our own work adds no more than 100 ms on top of the routing provider's response time. | Need | Assignment |
-| NFR-2 | **Routing calls.** One call to the routing API per new route. One retry is allowed after a timeout or server error, sent to a second server, so never more than two. Asking for the same route again, even with a different stop cost, makes none. | Need | Assignment |
+| NFR-2 | **Routing calls.** One call to the routing API per new route. One retry is allowed after a timeout or server error, sent to a second server, so never more than two. Asking again for a route that was planned, even with a different stop cost, makes none. | Need | Assignment |
 | NFR-3 | **No other external calls.** Start, finish and stations are all looked up locally at request time. | Need | Derived |
 | NFR-4 | **Framework.** Built on the latest stable Django. | Need | Assignment |
 | NFR-5 | **Free services, no account.** The routing service is free and needs no API key, so a reviewer can run the project without signing up for anything. No secret is committed. | Need | Assignment |
@@ -114,7 +114,7 @@ The assignment is silent on these. Each is stated in the README and, where it af
 | D-11 | How wide is the search for stations? | 5 miles either side of the road (see D-5). | Widening to 10 miles lowers the bill by less than 1% and admits stations twice as far from the road. |
 | D-12 | Which free routing API? | The OSRM public server, which needs no API key, with a second server running the same software for the one retry. Rejected: openrouteservice, which needs an account and key and has maintenance announced for the deadline day. | New York to Los Angeles returned in 1.6 seconds. The second server gave the identical route. |
 | D-13 | Which database? | PostgreSQL, the database a Django service runs on in production, started with the API by one Docker Compose command. The database is only used to hold the seed data; no request reads it. | — |
-| D-14 | How are the figures rounded? | The trip length is rounded to 0.1 mile. Each stop's gallons are rounded to 2 decimals and adjusted so they add up to the distance ÷ 10 exactly. A stop's cost is its gallons × its CSV price, rounded to cents. The total is the sum of the stop costs. The lowest possible bill (FR-15) is rounded the same way. | — |
+| D-14 | How are the figures rounded? | The trip length is rounded to 0.1 mile. The gallons are rounded as a running total, to 2 decimals, so the stops add up to the distance ÷ 10 exactly and no stop shows more than a full tank. A stop's cost is its gallons × its CSV price, rounded to cents. The total is the sum of the stop costs. The lowest possible bill (FR-15) is rounded the same way. | — |
 | D-15 | What is cached? | The road, by its two end points, and the finished answer, by those plus the stop cost. Both for 24 hours. | — |
 
 ## 7. Out of scope

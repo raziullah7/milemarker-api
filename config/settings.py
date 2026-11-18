@@ -1,6 +1,6 @@
 """Settings for the Mile Marker API.
 
-One file on purpose: the project needs four environment variables, and each has a default
+One file on purpose: the project needs three environment variables, and each has a default
 that works with the Compose file, so a fresh clone runs with no configuration at all.
 
 The service has no users, sessions, templates or admin site. That is why the app and
@@ -30,11 +30,9 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "local-development-key-not-a-se
 
 DEBUG = _flag("DJANGO_DEBUG", False)
 
-ALLOWED_HOSTS = [
-    host.strip()
-    for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,[::1]").split(",")
-    if host.strip()
-]
+# Any host. With no middleware nothing checks the Host header anyway, and nothing needs it
+# to: the API never builds an absolute address from it, and has no cookies or sessions.
+ALLOWED_HOSTS = ["*"]
 
 INSTALLED_APPS = [
     "rest_framework",
@@ -88,9 +86,12 @@ REST_FRAMEWORK = {
     "UNAUTHENTICATED_USER": None,
     "DEFAULT_AUTHENTICATION_CLASSES": [],
     "DEFAULT_PERMISSION_CLASSES": [],
-    # The free routing servers ask for no more than one request a second.
+    # Per client. It keeps one caller from leaning on the free routing servers through
+    # us; it does not limit all callers together.
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.AnonRateThrottle"],
     "DEFAULT_THROTTLE_RATES": {"anon": "60/min"},
+    # No proxy in front: a client is its connection's address, never X-Forwarded-For.
+    "NUM_PROXIES": 0,
 }
 
 # --- Routing service -------------------------------------------------------------------

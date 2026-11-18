@@ -70,7 +70,7 @@ Small CSV (Address and Rack ID hold any value):
 | PL-12 | UC-13 | Every city and state in the places table with more than one row: largest distance between its rows | Exactly 22 exceed 10 miles, and each resolves to its named county's row: Orlando FL (Orange), Austin TX (Travis), Philadelphia PA (Philadelphia), Jacksonville FL (Duval), Greenville SC (Greenville), San Antonio TX (Bexar), Saint Paul MN (Ramsey), Omaha NE (Douglas), North Charleston SC (Charleston), Fort Washington PA (Montgomery), Trenton NJ (Mercer), Dallas TX (Dallas), Cincinnati OH (Hamilton), Charleston SC (Charleston), Houston TX (Harris), Kissimmee FL (Osceola), Denver CO (Denver), Wewahitchka FL (Gulf), Indianapolis IN (Marion), San Francisco CA (San Francisco), Littleton CO (Arapahoe), Tampa FL (Hillsborough) |
 | PL-13 | UC-13 | `Port Wentworth, GA`; `Henrico, VA`; `Evergreen, AL`; `Elizabethport, NJ`; `University Park, IL`; then `Henrico, NC` | The five hand-added places resolve with those labels. `Henrico, NC` still resolves to the table's row (36.527409, −77.854625) |
 | PL-14 | UC-13 | `locate_city("ST LOUIS", "MO")`; `locate_city("Fort Worth", "TX")`; `locate_city("Henrico", "VA")`; `locate_city("Nowhereville", "TX")` | (38.638595, −90.257751); (32.7469, −97.3268); the hand-added Henrico position; `None` |
-| PL-15 | UC-08 | `Honolulu, HI`; `Anchorage, AK`; `Juneau, Alaska`; `San Juan, PR`; `Toronto, ON`; `Vancouver, BC`; `Montreal, Canada`; `Tijuana, Mexico` | Each raises `OutsideCoverage` with the field passed in and the query as given |
+| PL-15 | UC-08 | `Honolulu, HI`; `Anchorage, AK`; `Juneau, Alaska`; `San Juan, PR`; `Toronto, ON`; `Vancouver, BC`; `Montreal, Canada`; `Tijuana, Mexico`; `Tijuana Mexico`; `Toronto Canada` | Each raises `OutsideCoverage` with the field passed in and the query as given |
 | PL-16 | UC-07 | `Chicgo, IL` | `UnknownPlace`; suggestions contain `Chicago, IL`; 1 to 5 suggestions, all ending `, IL` |
 | PL-17 | UC-07 | `Chicago` | `UnknownPlace`; suggestions exactly `["Chicago, IL"]` (no other state has a Chicago) |
 | PL-18 | UC-07 | `Springfield` | `UnknownPlace`; exactly 5 suggestions, each `Springfield, ST`, five different states |
@@ -198,8 +198,8 @@ All cases use the equator road (1,000 miles), radius 5 and thinning 10 unless st
 
 | ID | UC | Input | Expected |
 |---|---|---|---|
-| AN-01 | UC-01 | Exact gallons [10.004, 20.004, 9.992] at prices [3.00, 3.10, 3.20]; distance 400.0 | Gallons [10.00, 20.01, 9.99] (the 0.01 short goes to the largest purchase); costs [30.00, 62.03, 31.97]; total_fuel_cost 124.00; summary.gallons 40.00 |
-| AN-02 | UC-01 | Exact gallons [10.006, 20.006, 9.988], same prices and distance | Gallons [10.01, 20.00, 9.99] (the 0.01 over is taken from the largest purchase); costs [30.03, 62.00, 31.97]; total_fuel_cost 124.00 |
+| AN-01 | UC-01 | Exact gallons [10.004, 20.004, 9.992] at prices [3.00, 3.10, 3.20]; distance 400.0 | Gallons [10.00, 20.01, 9.99] (running totals 10.00, 30.01, 40.00); costs [30.00, 62.03, 31.97]; total_fuel_cost 124.00; summary.gallons 40.00 |
+| AN-02 | UC-01 | Exact gallons [10.006, 20.006, 9.988], same prices and distance | Gallons [10.01, 20.00, 9.99] (running totals 10.01, 30.01, 40.00); costs [30.03, 62.00, 31.97]; total_fuel_cost 124.00 |
 | AN-03 | UC-01 | 1.00 gallon at 3.005; distance 10.0 | cost 3.01 (half-up in decimal arithmetic; floating point would give 3.00) |
 | AN-04 | UC-01 | 2.50 gallons at 3.00733333; distance 25.0 | cost 7.52; the JSON text of price_per_gallon is `3.00733333` |
 | AN-05 | UC-05 | First fill-up station 25.0 miles from the start; then 25.1 miles | warnings `[]`; then exactly one warning, containing the start station's name and `25.1` |
@@ -323,69 +323,70 @@ Run by `scripts/live_check.py` against a running server that uses the real routi
 - At least 1.2 seconds pass between requests: the routing servers ask for no more than one request a second, and the API allows 60 a minute.
 - Every 200 is also checked against rules R1 to R16 (section 4).
 - **Actual** records what came back: status, code and the figures named. **Result** is pass or fail.
+- The **Actual** and **Result** columns below hold the run of 18 Nov 2026 against the finished API: 49 cases, 49 passed. Expected figures marked ≈ were measured while the API was designed and are left as they were, so the two columns can be compared.
 
 ### 3.1 Positive
 
 | ID | UC | Request | Status | Expected | Actual | Result |
 |---|---|---|---|---|---|---|
-| P01 | UC-01 | `/api/v1/route/?start=New York, NY&finish=Los Angeles, CA` | 200 | distance_miles ≈ 2,800.7, pass within 2%; stops fewer than 10 (design: 7); total_fuel_cost ≈ 865.93, pass within 2%; lowest_possible_fuel_cost ≈ 854.65, pass within 2%; first_fill_distance_miles ≈ 3.1, pass within 2%; warnings `[]`; labels `New York, NY`, `Los Angeles, CA`; routing_calls 1; cache_hit false | | |
-| P02 | UC-04 | P01's request again | 200 | summary identical to P01's; routing_calls 0; cache_hit true; round trip under 50 ms | | |
-| P03 | UC-03 | `/api/v1/route/?start=New York, NY&finish=Los Angeles, CA&stop_cost=0` | 200 | stops more than P01's (design: 17); total_fuel_cost equals P01's lowest_possible_fuel_cost and this response's own; assumptions.stop_cost 0.0; routing_calls 0; cache_hit false | | |
-| P04 | UC-03 | `/api/v1/route/?start=New York, NY&finish=Los Angeles, CA&stop_cost=25` | 200 | stops no more than P01's (design: 6); total_fuel_cost not below P01's, ≈ 884.79, pass within 2%; routing_calls 0 | | |
-| P05 | UC-05 | `/api/v1/route/?start=Los Angeles, CA&finish=New York, NY` | 200 | first_fill_distance_miles over 100, ≈ 121, pass within 2%; one warning, naming fuel_stops[0].name and the distance; routing_calls 1 | | |
-| P06 | UC-01 | `/api/v1/route/?start=Seattle, WA&finish=Miami, FL` | 200 | distance_miles ≈ 3,301.2, pass within 2%; stops fewer than 12 | | |
-| P07 | UC-01 | `/api/v1/route/?start=Chicago, IL&finish=Houston, TX` | 200 | distance_miles ≈ 1,086.9, pass within 2% | | |
-| P08 | UC-02 | `/api/v1/route/?start=Dallas, TX&finish=Houston, TX` | 200 | distance_miles ≈ 238.1, pass within 2%; total_fuel_cost above 0 | | |
-| P09 | UC-01 | `/api/v1/route/?start=Boston, MA&finish=Washington, DC` | 200 | distance_miles ≈ 437.1, pass within 2% | | |
-| P10 | UC-06 | `/api/v1/route/?start=st. louis, mo&finish=Winston-Salem, North Carolina` | 200 | summary.start.label `Saint Louis, MO`; summary.finish.label `Winston Salem, NC` | | |
-| P11 | UC-06 | `/api/v1/route/?start=Dallas TX&finish=Phoenix, Arizona, USA` | 200 | labels `Dallas, TX`, `Phoenix, AZ` | | |
-| P12 | UC-02 | `/api/v1/route/?start=Fort Worth, TX&finish=Dallas, TX` | 200 | stops 1; fuel_stops[0] kind `start`, mile_marker 0.0, gallons = distance_miles ÷ 10; distance_miles under 50 | | |
-| P13 | UC-05 | `/api/v1/route/?start=Houston, TX&finish=Dallas, TX` | 200 | first_fill_distance_miles over 25; one warning | | |
-| P14 | UC-04 | `/api/v1/route/?start=new york city, ny&finish=Los Angeles, California` | 200 | summary identical to P01's, labels `New York, NY` and `Los Angeles, CA`; routing_calls 0; cache_hit true | | |
-| P15 | UC-03 | `/api/v1/route/?start=New York, NY&finish=Los Angeles, CA&stop_cost=100` | 200 | stops at least 6 and no more than P04's; total_fuel_cost not below P04's; assumptions.stop_cost 100.0; routing_calls 0 | | |
-| P16 | UC-04 | `/api/v1/route/?start=Dallas, TX&finish=Houston, TX&units=km` | 200 | summary identical to P08's; routing_calls 0; cache_hit true | | |
-| P17 | UC-06 | `/api/v1/route/?start=Washington, D.C.&finish=Boston, MA` | 200 | summary.start.label `Washington, DC` | | |
-| P18 | UC-06 | `/api/v1/route/?start=Santa Fe, New Mexico&finish=Denver, CO` | 200 | summary.start.label `Santa Fe, NM` | | |
-| P19 | UC-02, UC-05 | `/api/v1/route/?start=Los Angeles, CA&finish=Las Vegas, NV` | 200 | distance_miles ≈ 276.2, pass within 2%; stops 1; first_fill_distance_miles ≈ 121, pass within 2%; one warning | | |
-| P20 | UC-02 | `/api/v1/route/?start=Los Angeles, CA&finish=San Francisco, CA` | 200 | distance_miles under 500; stops 1; one warning | | |
+| P01 | UC-01 | `/api/v1/route/?start=New York, NY&finish=Los Angeles, CA` | 200 | distance_miles ≈ 2,800.7, pass within 2%; stops fewer than 10 (design: 7); total_fuel_cost ≈ 865.93, pass within 2%; lowest_possible_fuel_cost ≈ 854.65, pass within 2%; first_fill_distance_miles ≈ 3.1, pass within 2%; warnings `[]`; labels `New York, NY`, `Los Angeles, CA`; routing_calls 1; cache_hit false | 200; summary.distance_miles 2800.6; summary.stops 7; summary.total_fuel_cost 867.27; summary.lowest_possible_fuel_cost 855.95; summary.first_fill_distance_miles 3.1; warnings []; summary.start.label New York, NY; summary.finish.label Los Angeles, CA; meta.routing_calls 1; meta.cache_hit false; round trip 2023.7 ms | PASS |
+| P02 | UC-04 | P01's request again | 200 | summary identical to P01's; routing_calls 0; cache_hit true; round trip under 50 ms | 200; summary identical; meta.routing_calls 0; meta.cache_hit true; round_trip_ms 15.4 | PASS |
+| P03 | UC-03 | `/api/v1/route/?start=New York, NY&finish=Los Angeles, CA&stop_cost=0` | 200 | stops more than P01's (design: 17); total_fuel_cost equals P01's lowest_possible_fuel_cost and this response's own; assumptions.stop_cost 0.0; routing_calls 0; cache_hit false | 200; summary.stops 19; summary.total_fuel_cost 855.95; assumptions.stop_cost 0.0; meta.routing_calls 0; meta.cache_hit false; round trip 31.7 ms | PASS |
+| P04 | UC-03 | `/api/v1/route/?start=New York, NY&finish=Los Angeles, CA&stop_cost=25` | 200 | stops no more than P01's (design: 6); total_fuel_cost not below P01's, ≈ 884.79, pass within 2%; routing_calls 0 | 200; summary.stops 6; summary.total_fuel_cost 886.15; meta.routing_calls 0; round trip 51.9 ms | PASS |
+| P05 | UC-05 | `/api/v1/route/?start=Los Angeles, CA&finish=New York, NY` | 200 | first_fill_distance_miles over 100, ≈ 121, pass within 2%; one warning, naming fuel_stops[0].name and the distance; routing_calls 1 | 200; summary.first_fill_distance_miles 120.6; warnings ["The nearest listed fuel station to the start is Shelee's Travel Center in Coachella, CA, 120.6 miles away. The first fill-up is priced there."]; warnings.0 The nearest listed fuel station to the start is Shelee's Travel Center in Coachella, CA, 120.6 miles away. The first fill-up is priced there.; meta.routing_calls 1; round trip 1104.6 ms | PASS |
+| P06 | UC-01 | `/api/v1/route/?start=Seattle, WA&finish=Miami, FL` | 200 | distance_miles ≈ 3,301.2, pass within 2%; stops fewer than 12 | 200; summary.distance_miles 3301.1; summary.stops 8; round trip 940.8 ms | PASS |
+| P07 | UC-01 | `/api/v1/route/?start=Chicago, IL&finish=Houston, TX` | 200 | distance_miles ≈ 1,086.9, pass within 2% | 200; summary.distance_miles 1086.9; round trip 1189.6 ms | PASS |
+| P08 | UC-02 | `/api/v1/route/?start=Dallas, TX&finish=Houston, TX` | 200 | distance_miles ≈ 238.1, pass within 2%; total_fuel_cost above 0 | 200; summary.distance_miles 239.6; summary.total_fuel_cost 68.62; round trip 246.6 ms | PASS |
+| P09 | UC-01 | `/api/v1/route/?start=Boston, MA&finish=Washington, DC` | 200 | distance_miles ≈ 437.1, pass within 2% | 200; summary.distance_miles 437.0; round trip 474.6 ms | PASS |
+| P10 | UC-06 | `/api/v1/route/?start=st. louis, mo&finish=Winston-Salem, North Carolina` | 200 | summary.start.label `Saint Louis, MO`; summary.finish.label `Winston Salem, NC` | 200; summary.start.label Saint Louis, MO; summary.finish.label Winston Salem, NC; round trip 680.3 ms | PASS |
+| P11 | UC-06 | `/api/v1/route/?start=Dallas TX&finish=Phoenix, Arizona, USA` | 200 | labels `Dallas, TX`, `Phoenix, AZ` | 200; summary.start.label Dallas, TX; summary.finish.label Phoenix, AZ; round trip 480.7 ms | PASS |
+| P12 | UC-02 | `/api/v1/route/?start=Fort Worth, TX&finish=Dallas, TX` | 200 | stops 1; fuel_stops[0] kind `start`, mile_marker 0.0, gallons = distance_miles ÷ 10; distance_miles under 50 | 200; summary.stops 1; fuel_stops.0.kind start; fuel_stops.0.mile_marker 0.0; fuel_stops.0.gallons 3.22; summary.distance_miles 32.2; round trip 226.4 ms | PASS |
+| P13 | UC-05 | `/api/v1/route/?start=Houston, TX&finish=Dallas, TX` | 200 | first_fill_distance_miles over 25; one warning | 200; summary.first_fill_distance_miles 41.8; warnings ["The nearest listed fuel station to the start is FUEL MAXX #57 in Liberty, TX, 41.8 miles away. The first fill-up is priced there."]; round trip 403.9 ms | PASS |
+| P14 | UC-04 | `/api/v1/route/?start=new york city, ny&finish=Los Angeles, California` | 200 | summary identical to P01's, labels `New York, NY` and `Los Angeles, CA`; routing_calls 0; cache_hit true | 200; summary identical; summary.start.label New York, NY; summary.finish.label Los Angeles, CA; meta.routing_calls 0; meta.cache_hit true; round trip 29.9 ms | PASS |
+| P15 | UC-03 | `/api/v1/route/?start=New York, NY&finish=Los Angeles, CA&stop_cost=100` | 200 | stops at least 6 and no more than P04's; total_fuel_cost not below P04's; assumptions.stop_cost 100.0; routing_calls 0 | 200; summary.stops 6; summary.total_fuel_cost 886.15; assumptions.stop_cost 100.0; meta.routing_calls 0; round trip 32.2 ms | PASS |
+| P16 | UC-04 | `/api/v1/route/?start=Dallas, TX&finish=Houston, TX&units=km` | 200 | summary identical to P08's; routing_calls 0; cache_hit true | 200; summary identical; meta.routing_calls 0; meta.cache_hit true; round trip 5.6 ms | PASS |
+| P17 | UC-06 | `/api/v1/route/?start=Washington, D.C.&finish=Boston, MA` | 200 | summary.start.label `Washington, DC` | 200; summary.start.label Washington, DC; round trip 636.7 ms | PASS |
+| P18 | UC-06 | `/api/v1/route/?start=Santa Fe, New Mexico&finish=Denver, CO` | 200 | summary.start.label `Santa Fe, NM` | 200; summary.start.label Santa Fe, NM; round trip 607.5 ms | PASS |
+| P19 | UC-02, UC-05 | `/api/v1/route/?start=Los Angeles, CA&finish=Las Vegas, NV` | 200 | distance_miles ≈ 276.2, pass within 2%; stops 1; first_fill_distance_miles ≈ 121, pass within 2%; one warning | 200; summary.distance_miles 276.2; summary.stops 1; summary.first_fill_distance_miles 120.6; warnings ["The nearest listed fuel station to the start is Shelee's Travel Center in Coachella, CA, 120.6 miles away. The first fill-up is priced there."]; round trip 413.1 ms | PASS |
+| P20 | UC-02 | `/api/v1/route/?start=Los Angeles, CA&finish=San Francisco, CA` | 200 | distance_miles under 500; stops 1; one warning | 200; summary.distance_miles 389.0; summary.stops 1; warnings ["The nearest listed fuel station to the start is Shelee's Travel Center in Coachella, CA, 120.6 miles away. The first fill-up is priced there."]; round trip 622.7 ms | PASS |
 
 ### 3.2 Negative
 
 | ID | UC | Request | Status | Expected | Actual | Result |
 |---|---|---|---|---|---|---|
-| N01 | UC-15 | `/api/v1/route/?start=New York, NY` | 400 | `invalid_request`; details.fields has `finish` | | |
-| N02 | UC-15 | `/api/v1/route/?start=&finish=Los Angeles, CA` | 400 | `invalid_request`; details.fields has `start` | | |
-| N03 | UC-07 | `/api/v1/route/?start=Chicgo, IL&finish=Houston, TX` | 400 | `unknown_place`; field `start`; query `Chicgo, IL`; suggestions include `Chicago, IL`, at most 5 | | |
-| N04 | UC-07 | `/api/v1/route/?start=Dallas, TX&finish=Chicago` | 400 | `unknown_place`; field `finish`; suggestions `["Chicago, IL"]` | | |
-| N05 | UC-07 | `/api/v1/route/?start=Dallas, TX&finish=Springfield, ZZ` | 400 | `unknown_place`; field `finish`; at most 5 suggestions | | |
-| N06 | UC-08 | `/api/v1/route/?start=Honolulu, HI&finish=Los Angeles, CA` | 422 | `outside_coverage`; field `start`; query `Honolulu, HI` | | |
-| N07 | UC-08 | `/api/v1/route/?start=Seattle, WA&finish=Anchorage, AK` | 422 | `outside_coverage`; field `finish` | | |
-| N08 | UC-08 | `/api/v1/route/?start=Toronto, ON&finish=Buffalo, NY` | 422 | `outside_coverage`; field `start` | | |
-| N09 | UC-16 | `/api/v1/route/?start=Dallas, TX&finish=dallas texas` | 400 | `invalid_request`; details.fields has `finish` | | |
-| N10 | UC-15 | `/api/v1/route/?start=New York, NY&finish=Los Angeles, CA&stop_cost=-1`, then with `101`, `abc`, `nan` | 400 each | `invalid_request`; details.fields has `stop_cost` | | |
-| N11 | UC-09 | `/api/v1/route/?start=Detroit, MI&finish=Buffalo, NY` | 422 | `route_leaves_usa`; miles_abroad ≈ 252, pass within 2% | | |
-| N12 | UC-10 | `/api/v1/route/?start=Los Angeles, CA&finish=Seattle, WA` | 422 | `no_fuel_plan`; gap_start_mile 0.0; gap_miles ≈ 886, pass within 2% | | |
-| N13 | UC-17 | POST, then PUT, PATCH, DELETE: `/api/v1/route/?start=New York, NY&finish=Los Angeles, CA` | 405 each | `method_not_allowed`; standard error body | | |
-| N14 | UC-17 | `/api/v1/routes/?start=New York, NY&finish=Los Angeles, CA` | 404 | `not_found`; standard error body | | |
-| N15 | UC-18 | P01's request repeated with no pause; run last | 429 | `rate_limited` by the 61st request at the latest; details.retry_after_seconds above 0 | | |
-| N16 | UC-07 | `/api/v1/route/?start=Chicgo, IL&finish=Nowhere, ZZ` | 400 | `unknown_place`; field `start` | | |
-| N17 | UC-15 | `/api/v1/route/?start=Nowhere, ZZ` | 400 | `invalid_request` (the missing finish is found before places are looked up); details.fields has `finish` | | |
-| N18 | UC-08 | `/api/v1/route/?start=Tijuana, Mexico&finish=San Diego, CA` | 422 | `outside_coverage`; field `start` | | |
-| N19 | UC-08 | `/api/v1/route/?start=Miami, FL&finish=San Juan, PR` | 422 | `outside_coverage`; field `finish` | | |
-| N20 | UC-15 | `/api/v1/route/?start=   &finish=Los Angeles, CA` | 400 | `invalid_request`; details.fields has `start` | | |
-| N21 | UC-15 | `/api/v1/route/?start=New York, NY&finish=Los Angeles, CA&stop_cost=100.01`, then with `10.555`, then with `stop_cost=` empty | 400 each | `invalid_request`; details.fields has `stop_cost` | | |
-| N22 | UC-09 | `/api/v1/route/?start=Detroit, MI&finish=Boston, MA` | 422 | `route_leaves_usa`; miles_abroad ≈ 234, pass within 2% | | |
-| N23 | UC-10 | `/api/v1/route/?start=San Francisco, CA&finish=Portland, OR` | 422 | `no_fuel_plan`; gap_start_mile 0.0; gap_miles ≈ 554, pass within 2% | | |
-| N24 | UC-15 | `/api/v1/route/` | 400 | `invalid_request`; details.fields has `start` and `finish` | | |
-| N25 | UC-16 | `/api/v1/route/?start=New York City, NY&finish=Manhattan, NY` | 400 | `invalid_request`; details.fields has `finish` | | |
-| N26 | UC-07 | `/api/v1/route/?start=75201&finish=Dallas, TX` | 400 | `unknown_place`; field `start` | | |
+| N01 | UC-15 | `/api/v1/route/?start=New York, NY` | 400 | `invalid_request`; details.fields has `finish` | 400 invalid_request; error.details.fields {finish} | PASS |
+| N02 | UC-15 | `/api/v1/route/?start=&finish=Los Angeles, CA` | 400 | `invalid_request`; details.fields has `start` | 400 invalid_request; error.details.fields {start} | PASS |
+| N03 | UC-07 | `/api/v1/route/?start=Chicgo, IL&finish=Houston, TX` | 400 | `unknown_place`; field `start`; query `Chicgo, IL`; suggestions include `Chicago, IL`, at most 5 | 400 unknown_place; error.details.field start; error.details.query Chicgo, IL; error.details.suggestions ["Chicago, IL", "Cisco, IL", "West Chicago, IL", "North Chicago, IL", "Cicero, IL"] | PASS |
+| N04 | UC-07 | `/api/v1/route/?start=Dallas, TX&finish=Chicago` | 400 | `unknown_place`; field `finish`; suggestions `["Chicago, IL"]` | 400 unknown_place; error.details.field finish; error.details.suggestions ["Chicago, IL"] | PASS |
+| N05 | UC-07 | `/api/v1/route/?start=Dallas, TX&finish=Springfield, ZZ` | 400 | `unknown_place`; field `finish`; at most 5 suggestions | 400 unknown_place; error.details.field finish; error.details.suggestions ["Springfield, AR", "Springfield, CO", "Springfield, GA", "Springfield, ID", "Springfield, IL"] | PASS |
+| N06 | UC-08 | `/api/v1/route/?start=Honolulu, HI&finish=Los Angeles, CA` | 422 | `outside_coverage`; field `start`; query `Honolulu, HI` | 422 outside_coverage; error.details.field start; error.details.query Honolulu, HI | PASS |
+| N07 | UC-08 | `/api/v1/route/?start=Seattle, WA&finish=Anchorage, AK` | 422 | `outside_coverage`; field `finish` | 422 outside_coverage; error.details.field finish | PASS |
+| N08 | UC-08 | `/api/v1/route/?start=Toronto, ON&finish=Buffalo, NY` | 422 | `outside_coverage`; field `start` | 422 outside_coverage; error.details.field start | PASS |
+| N09 | UC-16 | `/api/v1/route/?start=Dallas, TX&finish=dallas texas` | 400 | `invalid_request`; details.fields has `finish` | 400 invalid_request; error.details.fields {finish} | PASS |
+| N10 | UC-15 | `/api/v1/route/?start=New York, NY&finish=Los Angeles, CA&stop_cost=-1`, then with `101`, `abc`, `nan` | 400 each | `invalid_request`; details.fields has `stop_cost` | 400 invalid_request (all 4); error.details.fields {stop_cost} | PASS |
+| N11 | UC-09 | `/api/v1/route/?start=Detroit, MI&finish=Buffalo, NY` | 422 | `route_leaves_usa`; miles_abroad ≈ 252, pass within 2% | 422 route_leaves_usa; error.details.miles_abroad 252.0 | PASS |
+| N12 | UC-10 | `/api/v1/route/?start=Los Angeles, CA&finish=Seattle, WA` | 422 | `no_fuel_plan`; gap_start_mile 0.0; gap_miles ≈ 886, pass within 2% | 422 no_fuel_plan; error.details.gap_start_mile 0.0; error.details.gap_miles 885.3 | PASS |
+| N13 | UC-17 | POST, then PUT, PATCH, DELETE: `/api/v1/route/?start=New York, NY&finish=Los Angeles, CA` | 405 each | `method_not_allowed`; standard error body | 405 method_not_allowed (all 4) | PASS |
+| N14 | UC-17 | `/api/v1/routes/?start=New York, NY&finish=Los Angeles, CA` | 404 | `not_found`; standard error body | 404 not_found | PASS |
+| N15 | UC-18 | P01's request repeated with no pause; run last | 429 | `rate_limited` by the 61st at the latest; details.retry_after_seconds above 0 | 429 rate_limited at request 61; error.details.retry_after_seconds 59 | PASS |
+| N16 | UC-07 | `/api/v1/route/?start=Chicgo, IL&finish=Nowhere, ZZ` | 400 | `unknown_place`; field `start` | 400 unknown_place; error.details.field start | PASS |
+| N17 | UC-15 | `/api/v1/route/?start=Nowhere, ZZ` | 400 | `invalid_request` (the missing finish is found before places are looked up); details.fields has `finish` | 400 invalid_request; error.details.fields {finish} | PASS |
+| N18 | UC-08 | `/api/v1/route/?start=Tijuana, Mexico&finish=San Diego, CA` | 422 | `outside_coverage`; field `start` | 422 outside_coverage; error.details.field start | PASS |
+| N19 | UC-08 | `/api/v1/route/?start=Miami, FL&finish=San Juan, PR` | 422 | `outside_coverage`; field `finish` | 422 outside_coverage; error.details.field finish | PASS |
+| N20 | UC-15 | `/api/v1/route/?start=   &finish=Los Angeles, CA` | 400 | `invalid_request`; details.fields has `start` | 400 invalid_request; error.details.fields {start} | PASS |
+| N21 | UC-15 | `/api/v1/route/?start=New York, NY&finish=Los Angeles, CA&stop_cost=100.01`, then with `10.555`, then with `stop_cost=` empty | 400 each | `invalid_request`; details.fields has `stop_cost` | 400 invalid_request (all 3); error.details.fields {stop_cost} | PASS |
+| N22 | UC-09 | `/api/v1/route/?start=Detroit, MI&finish=Boston, MA` | 422 | `route_leaves_usa`; miles_abroad ≈ 234, pass within 2% | 422 route_leaves_usa; error.details.miles_abroad 234.0 | PASS |
+| N23 | UC-10 | `/api/v1/route/?start=San Francisco, CA&finish=Portland, OR` | 422 | `no_fuel_plan`; gap_start_mile 0.0; gap_miles ≈ 554, pass within 2% | 422 no_fuel_plan; error.details.gap_start_mile 0.0; error.details.gap_miles 549.3 | PASS |
+| N24 | UC-15 | `/api/v1/route/` | 400 | `invalid_request`; details.fields has `start` and `finish` | 400 invalid_request; error.details.fields {start, finish} | PASS |
+| N25 | UC-16 | `/api/v1/route/?start=New York City, NY&finish=Manhattan, NY` | 400 | `invalid_request`; details.fields has `finish` | 400 invalid_request; error.details.fields {finish} | PASS |
+| N26 | UC-07 | `/api/v1/route/?start=75201&finish=Dallas, TX` | 400 | `unknown_place`; field `start` | 400 unknown_place; error.details.field start | PASS |
 
 ## 4. Correctness rules
 
 Checked on every successful response: by the verifier in the endpoint tests (VF-01) and by `scripts/live_check.py` on every live 200. Money, gallons and prices are read from the JSON as exact decimals.
 
 1. **R1 Range.** No stretch between consecutive stops' mile markers, or from the last stop to `distance_miles`, is over 500 miles.
-2. **R2 Tank.** Walking the stops from mile 0 with an empty tank, adding each stop's gallons and burning 1 gallon per 10 miles, the tank is never below 0 or above 50 gallons, with 0.05 allowed for rounding.
+2. **R2 Tank.** Walking the stops from mile 0 with an empty tank, adding each stop's gallons and burning 1 gallon per 10 miles, the tank is never below 0 or above 50 gallons, and no purchase is more than 50 gallons.
 3. **R3 Gallons.** The stops' gallons add up exactly to `summary.gallons`, which equals `summary.distance_miles` ÷ 10 exactly.
 4. **R4 Money.** Each stop's `cost` equals its `gallons` × `price_per_gallon`, rounded half-up to cents. `summary.total_fuel_cost` equals the sum of the costs exactly.
 5. **R5 Prices and names.** Each stop's `price_per_gallon` equals, as an exact decimal, the lowest `Retail Price` the CSV lists for its `station_id`. Its `name`, `address`, `city` and `state` equal that row's, with spaces trimmed; on a price tie, the first such row.
@@ -393,10 +394,10 @@ Checked on every successful response: by the verifier in the endpoint tests (VF-
 7. **R7 Lowest bill.** `lowest_possible_fuel_cost` is not above `total_fuel_cost`, and `lowest_possible_stops` is at least 1. When `assumptions.stop_cost` is 0, the two costs are equal (FR-16).
 8. **R8 Stop count.** `summary.stops` equals the number of `fuel_stops`, and is at least `distance_miles` ÷ 500 rounded up.
 9. **R9 Assumptions.** `assumptions` is `range_miles` 500, `miles_per_gallon` 10, `tank_gallons` 50, `starting_fuel_gallons` 0, `search_radius_miles` 5, and `stop_cost` equal to the request's, or 10.0 when none was sent.
-10. **R10 First fill-up.** `first_fill_distance_miles` is 0 or more. If it is over 25, `warnings` holds exactly one sentence, containing `fuel_stops[0].name` and the distance; otherwise `warnings` is `[]`.
+10. **R10 First fill-up.** `first_fill_distance_miles` is 0 or more. If it is over 25, `warnings` holds exactly one entry, containing `fuel_stops[0].name` and the distance; otherwise `warnings` is `[]`.
 11. **R11 Map.** `map` is a GeoJSON FeatureCollection. Feature 0 is a LineString with `kind` `route` and `distance_miles` equal to the summary's. Then one Point per stop, in order, with `kind` `stop` and `order`, `name`, `mile_marker`, `price_per_gallon`, `gallons` and `cost` equal to the stop's, and `title` `order. NAME, City ST`. Then a Point with `kind` `start` at `summary.start` and one with `kind` `finish` at `summary.finish`. Every Point has `title` and `marker-color`. Coordinates are `[lng, lat]`.
 12. **R12 Stops on the line.** Each `station` stop's `[lng, lat]` is one of the route line's coordinates. Their positions in the line increase with `order`. For a stop at line position `i`, `mile_marker` is within 0.5% + 0.05 miles of `0.5 × i`.
-13. **R13 Line spacing.** Consecutive route-line points are at most 0.51 miles apart, and the line has `2 × distance_miles + 1` points, within 1%.
+13. **R13 Line spacing.** Consecutive route-line points are at most 0.51 miles apart, and the line has `2 × distance_miles + 1` points, within 1% or 1 point, whichever is larger. The line has one point every half mile plus its end point, so a correct line can differ from that figure by almost a whole point.
 14. **R14 Precision.** Every number is a JSON number. Miles have at most 1 decimal, gallons and money at most 2, coordinates at most 5.
 15. **R15 Meta.** `routing_calls` is 0, 1 or 2. `cache_hit` true implies `routing_calls` 0. `timings_ms.routing`, `own` and `total` are 0 or more, and `routing` is 0 when `routing_calls` is 0. `routing_server` is `router.project-osrm.org` or `routing.openstreetmap.de`.
 16. **R16 Labels.** `summary.start.label` and `summary.finish.label` have the form `City, ST`, with ST one of the lower 48 states or DC.
@@ -407,9 +408,9 @@ Round trip is measured by `scripts/live_check.py` on the same machine as the ser
 
 | ID | UC | Requirement | Input | Expected | Actual | Result |
 |---|---|---|---|---|---|---|
-| S01 | UC-01 | NFR-1 | P01 and P06, each a new trip | meta.timings_ms.own 100 or less; round trip minus meta.timings_ms.routing 100 ms or less | | |
-| S02 | UC-04 | NFR-11 | P02 | Round trip under 50 ms; meta.timings_ms.total under 50; routing_calls 0 | | |
-| S03 | UC-03 | NFR-1, NFR-2 | P03 (road cached, new stop cost) | routing_calls 0; round trip 100 ms or less | | |
+| S01 | UC-01 | NFR-1 | P01 and P06, each a new trip | meta.timings_ms.own 100 or less; round trip minus meta.timings_ms.routing 100 ms or less | P01's meta.timings_ms.own 28.3; P01's round_trip_ms - timings_ms.routing 42.9; P06's meta.timings_ms.own 36.4; P06's round_trip_ms - timings_ms.routing 47.3 | PASS |
+| S02 | UC-04 | NFR-11 | P02 | Round trip under 50 ms; meta.timings_ms.total under 50; routing_calls 0 | P02's round_trip_ms 15.4; P02's meta.timings_ms.total 2.2; P02's meta.routing_calls 0 | PASS |
+| S03 | UC-03 | NFR-1, NFR-2 | P03 (road cached, new stop cost) | routing_calls 0; round trip 100 ms or less | P03's meta.routing_calls 0; P03's round_trip_ms 31.7 | PASS |
 | S04 | UC-12 | NFR-12 | Endpoint test with the default 5 s deadline; both fake servers accept the request and never answer | 502 `routing_unavailable`, reason `timeout`, within 11 s of the request | | |
 
 ## 6. Cases that need a fake routing service or fixed test data
@@ -447,7 +448,7 @@ Round trip is measured by `scripts/live_check.py` on the same machine as the ser
 | FC-01 | UC-14 | Clone the public repository into an empty folder on a machine with only git and Docker; no `.env`; `docker compose up` | P08 returns 200. Nothing asks for an account or a key | | |
 | FC-02 | UC-19 | `uv sync`, the Compose database running, `uv run pytest` | Every test passes; none is skipped for want of a network | | |
 | FC-03 | UC-19 | `uv run ruff check .` | Exit code 0; no findings | | |
-| FC-04 | UC-14 | Search the repository for keys and secrets; read `.env.example` | No API key or token. The only password is the local database default in the Compose file. `.env.example` lists `DATABASE_URL`, `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS` | | |
+| FC-04 | UC-14 | Search the repository for keys and secrets; read `.env.example` | No API key or token. The only password is the local database default in the Compose file. `.env.example` lists `DATABASE_URL`, `DJANGO_SECRET_KEY`, `DJANGO_DEBUG` | | |
 | FC-05 | UC-19 | Only if CI is built (NFR-17): a push to the repository | The workflow runs lint and tests, and the run passes | | |
 | M01 | UC-11 | P01's `map` pasted into geojson.io | A line from New York to Los Angeles; one marker per stop, labelled with its title, for example `2. NAME, City ST`; a start and a finish marker | | |
 | M02 | UC-14 | The README | Covers setup with one command, an example request, and the decisions D-1 to D-15 | | |

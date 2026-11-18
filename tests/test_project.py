@@ -5,6 +5,8 @@ Test IDs (PJ-01 ...) refer to docs/test-cases.md.
 
 import ast
 import socket
+import subprocess
+import sys
 from pathlib import Path
 
 import dj_database_url
@@ -45,6 +47,15 @@ def test_pj02_pure_modules_do_not_import_django(module):
             imported.add(node.module.split(".")[0])
     assert not imported & {"django", "rest_framework"}
 
+    # A module can still load Django through a module it imports, so import it in a
+    # fresh interpreter, where nothing else has loaded Django, and see what came with it.
+    name = module.removesuffix(".py").replace("/", ".")
+    script = f"import sys, {name}; print(sorted({{'django', 'rest_framework'}} & set(sys.modules)))"
+    result = subprocess.run(
+        [sys.executable, "-c", script], cwd=ROOT, capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip() == "[]"
+
 
 @pytest.mark.django_db
 @pytest.mark.filterwarnings("ignore:A test tried to use socket")
@@ -73,6 +84,14 @@ def test_pj04_settings_hold_the_values_the_specs_fix():
     assert settings.TRIP_CACHE_SECONDS == 86_400
     assert settings.CACHES["default"]["TIMEOUT"] == 86_400
     assert settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["anon"] == "60/min"
+
+
+def test_allowed_hosts_does_not_pretend_to_check_the_host():
+    """Review 5Q2, finding 12. With no middleware nothing reads the Host header, so the
+    setting allows any host, and no variable suggests otherwise."""
+    assert "*" in settings.ALLOWED_HOSTS  # the test runner adds "testserver" to it
+    for path in (ROOT / ".env.example", ROOT / "config" / "settings.py"):
+        assert "DJANGO_ALLOWED_HOSTS" not in path.read_text(encoding="utf-8"), path
 
 
 def test_pj05_database_url_selects_postgresql():

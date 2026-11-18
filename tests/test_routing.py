@@ -27,6 +27,19 @@ OK_ANSWER = {
     ],
 }
 NO_ROUTE_ANSWER = {"code": "NoRoute", "message": "No route found between points"}
+# Both points snapped to one spot on the road: a route of length zero.
+ZERO_LENGTH_ANSWER = {
+    "code": "Ok",
+    "routes": [
+        {
+            "distance": 0,
+            "geometry": {
+                "type": "LineString",
+                "coordinates": [[-96.80439, 32.790439], [-96.80439, 32.790439]],
+            },
+        }
+    ],
+}
 
 
 def ok() -> httpx.Response:
@@ -219,3 +232,24 @@ def test_rt14_reason_is_timeout_only_if_every_attempt_timed_out():
         Fake(httpx.Response(500), timeout).fetch()
     assert first.value.details["reason"] == "error"
     assert second.value.details["reason"] == "error"
+
+
+def test_any_other_refusal_ends_the_request_at_once():
+    """Review 5Q2, finding 5. A 4xx status other than 429 refuses the request itself, and
+    the second server would refuse it too (architecture section 9), so it is not asked."""
+    invalid = {"code": "InvalidQuery", "message": "Query string malformed close to position 9"}
+    fake = Fake(httpx.Response(400, json=invalid), None)
+    with pytest.raises(RoutingUnavailable) as caught:
+        fake.fetch()
+    assert caught.value.details["reason"] == "error"
+    assert len(fake.requests) == 1
+
+
+def test_a_road_of_length_zero_is_a_route():
+    """Review 5Q2, finding 5. The planner, not the client, decides what a zero-length road
+    means: start and finish are the same place (EP-20)."""
+    fake = Fake(httpx.Response(200, json=ZERO_LENGTH_ANSWER), None)
+    route = fake.fetch()
+    assert route.distance_miles == 0.0
+    assert route.coords.shape == (2, 2)
+    assert route.calls == 1

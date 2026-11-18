@@ -6,9 +6,10 @@ break one thing in a copy of a correct answer and expect the rule that guards it
 reported. VF-02 shows the unbroken answer reports nothing, so a rule that always fired could
 not pass these tests.
 
-VF-01 asks that every 200 of the endpoint tests passes the verifier. Those tests run on
-invented stations, so here VF-01 is a spread of real trips instead: each recorded road with
-the real stations, every answer verified against the real CSV.
+VF-01 asks that every 200 of the endpoint tests passes the verifier. tests/test_api.py checks
+each of its 200s with it, against the invented stations each test creates. Here VF-01 adds a
+spread of real trips: each recorded road with the real stations, every answer verified
+against the real CSV.
 """
 
 import ast
@@ -18,6 +19,7 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from tests.conftest import load_road
@@ -121,6 +123,21 @@ def test_vf04_the_tank_overflows(good, prices):
     assert "R2" in found, lines
 
 
+def test_r2_allows_nothing_for_rounding(good, prices):
+    """The shown gallons are rounded as a running total (architecture section 8), so the
+    walk is exact: a tank one hundredth of a gallon over its size is reported."""
+    bad = copy.deepcopy(good)
+    stops = bad["fuel_stops"]
+    # Taken back at stop 2, so the tank is as before from there on: the only fault is
+    # 50.01 gallons after stop 1.
+    extra = Decimal("50.01") - stops[0]["gallons"]
+    stops[0]["gallons"] += extra
+    stops[1]["gallons"] -= extra
+
+    found, lines = rules(bad, prices)
+    assert "R2" in found, lines
+
+
 def test_vf05_gallons_do_not_add_up(good, prices):
     bad = copy.deepcopy(good)
     bad["fuel_stops"][1]["gallons"] += Decimal("0.01")
@@ -218,6 +235,43 @@ def test_vf15_a_hole_in_the_route_line(good, prices):
 
     found, lines = rules(bad, prices)
     assert "R13" in found, lines
+
+
+FORT_WORTH = (32.7469, -97.3268)
+MILES_PER_DEGREE_OF_LATITUDE = 69.094094  # on a sphere of radius 3,958.8 miles
+
+
+def test_r13_a_correct_short_road_passes(client, use_real_stations, monkeypatch, prices):
+    """R13 allows 1% or 1 point, whichever is larger. A correct line has a point every half
+    mile plus the end point: 22 points for a 10.3-mile road, against 2 x 10.3 + 1 = 21.6.
+    1% of that is 0.216 of a point, so only the 1-point allowance lets it pass."""
+    # Due north from Fort Worth. Only the line's spacing matters here, not where it goes.
+    marks = np.append(np.arange(0.0, 10.3, 0.5), 10.3)
+    coords = np.column_stack(
+        [np.full(len(marks), FORT_WORTH[1]), FORT_WORTH[0] + marks / MILES_PER_DEGREE_OF_LATITUDE]
+    )
+    road = Route(coords=coords, distance_miles=10.3, server=SERVER_1, calls=1)
+    monkeypatch.setattr(routing, "fetch_route", lambda start, finish: road)
+    response = client.get(URL, {"start": "Fort Worth, TX", "finish": "Dallas, TX"})
+    assert response.status_code == 200, response.content
+    body = json.loads(response.content, parse_float=Decimal)
+
+    assert len(body["map"]["features"][0]["geometry"]["coordinates"]) == 22
+    assert verify_response(body, prices) == []
+
+
+def test_r13_a_long_road_missing_a_point_still_fails(good, prices):
+    """On a long road one point fewer is well inside 1%, so the count cannot see it. The
+    one-mile gap it leaves is what R13 reports (VF-15 removes the middle point)."""
+    bad = copy.deepcopy(good)
+    line = bad["map"]["features"][0]["geometry"]["coordinates"]
+    del line[len(line) // 3]
+
+    found, lines = rules(bad, prices)
+    assert "R13" in found, lines
+    [r13] = [line for line in lines if line.startswith("R13")]
+    assert "gaps over 0.51 miles: 1," in r13
+    assert "line points" not in r13
 
 
 def test_vf16_a_cost_with_three_decimals(good, prices):

@@ -1,7 +1,7 @@
-"""The shapes station data takes in memory. Pure data classes; no Django.
+"""The shapes station data and places take in memory. Pure data classes; no Django.
 
-They live here, not next to the model, so that the trip-planning code can use them
-without importing anything from Django.
+They live here, not next to the model or the places table, so that the trip-planning
+code can use them without importing anything from Django.
 """
 
 from collections.abc import Sequence
@@ -11,6 +11,16 @@ from decimal import Decimal
 import numpy as np
 
 from stations.sphere import to_xyz
+
+
+@dataclass(frozen=True)
+class Place:
+    """A resolved place (stations/places.py). `label` is "City, ST" in the table's own
+    spelling."""
+
+    label: str
+    lat: float
+    lng: float
 
 
 @dataclass(frozen=True)

@@ -28,7 +28,6 @@ SEARCH_RADIUS_MILES = 5
 DEFAULT_STOP_COST = Decimal(10)
 
 CENT = Decimal("0.01")
-TANK_SLACK = Decimal("0.05")  # R2: per-stop gallons are rounded to cents, so the walk may drift
 FIRST_FILL_WARNING_MILES = 25  # R10, FR-14
 LINE_GAP_MILES = 0.51  # R13: half-mile points, plus a little for coordinates cut to 5 decimals
 SERVERS = frozenset({"router.project-osrm.org", "routing.openstreetmap.de"})
@@ -166,19 +165,20 @@ def _r1_range(body, prices, stop_cost):
 
 def _r2_tank(body, prices, stop_cost):
     # Walk the trip from mile 0 with an empty tank (D-1), burning a gallon per 10 miles.
+    # The gallons are rounded as a running total, so the walk is exact: no allowance.
     problems = []
     tank, at = Decimal(0), Decimal(0)
     for n, stop in enumerate(body["fuel_stops"], 1):
         mile = _dec(stop["mile_marker"])
         tank -= (mile - at) / MILES_PER_GALLON
         at = mile
-        if tank < -TANK_SLACK:
+        if tank < 0:
             problems.append(f"tank at {tank} gallons on reaching stop {n} (mile {mile})")
         tank += _dec(stop["gallons"])
-        if tank > TANK_GALLONS + TANK_SLACK:
+        if tank > TANK_GALLONS:
             problems.append(f"tank at {tank} gallons after stop {n}")
     tank -= (_dec(body["summary"]["distance_miles"]) - at) / MILES_PER_GALLON
-    if tank < -TANK_SLACK:
+    if tank < 0:
         problems.append(f"tank at {tank} gallons on reaching the finish")
     return problems
 
@@ -434,9 +434,14 @@ def _r13_line_spacing(body, prices, stop_cost):
         problems.append(
             f"gaps over {LINE_GAP_MILES} miles: {len(gaps)}, the first {gap:.3f} after point {i}"
         )
+    # A point every half mile plus the end point can be almost a whole point away from
+    # 2d + 1, which is more than 1% on a trip under about 40 miles.
     expected = 2 * distance + 1
-    if abs(len(line) - expected) > expected / 100:
-        problems.append(f"{len(line)} line points, expected {expected} within 1%")
+    if abs(len(line) - expected) > max(expected / 100, 1):
+        problems.append(
+            f"{len(line)} line points, expected {expected} within 1% or 1 point, "
+            "whichever is larger"
+        )
     return problems
 
 
