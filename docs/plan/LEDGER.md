@@ -39,3 +39,4 @@ Repo: this repository (commit identity must be `Razi Ullah <50240668+raziullah7@
 - Phase 4 BASE: 3a99e21
 - Phase 4 task 4E (the API) reviewed by the controller: one review round (cold start, rounded error miles, always JSON, labels in the cache key, minus zero). Suite 294 passed, run by the controller. First live calls made by the controller: New York to Los Angeles 7 stops, $867.27, own work 19.4 ms; repeat 0 calls; stop_cost=0 gives 19 stops, $855.95.
 - **Phase 4: complete (commit 1565cde).** Gate 4 passed.
+- Phase 5 started. Two independent Opus agents: 5Q1 (verifier, live runner; one full live run allowed) and 5Q2 (read-only review). Briefs: briefs/phase5-Q1-verifier.md, briefs/phase5-Q2-review.md.
