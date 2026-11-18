@@ -21,4 +21,8 @@ Repo: this repository (commit identity must be `Razi Ullah <50240668+raziullah7@
 - Phase 1 task 1.1 done (R1): `reports/phase1-R1-stack.md`. Key facts: use `KDTree` not `cKDTree`; httpx `timeout=` is per phase, so a total deadline needs a streamed read against a clock; pytest-socket does not see psycopg; gunicorn runs only in Docker; PostgreSQL 18 images moved the data directory.
 - 2026-11-18 The user ruled that ALL documents, the plan included, live in `docs/` inside the repository. The plan folder was moved from beside the project to `docs/plan/`. Machine paths and one personal name were removed from the plan files. Cached research data is git-ignored.
 - Ruling reversed by the user: I began Phase 2 tasks 2.1 (uv project, dependencies) while R3 was still writing. The user said to take the time and put quality first. The one command already running is allowed to finish; nothing else in Phase 2 starts until Gate 1 has passed and Phase 1 is committed.
-- Waiting on: R3 (use cases, test cases). Nothing committed yet.
+- Phase 1 task 1.6 done (R3): `docs/use-cases.md` (20 use cases) and `docs/test-cases.md` (257 cases). Controller checked IDs and coverage by script, read the test cases in full, and settled R3's 16 flagged gaps in the specs (listed in `PHASE-1.md`, Result).
+- **Phase 1: complete (commit 3f1893a).** Gate 1 passed.
+- Phase 2 started. Task 2.1 (uv project, dependencies) was already done.
+- Phase 2 tasks 2.2 to 2.8 done by the controller: Django project, Compose PostgreSQL 17 (container `milemarker-api-db-1`), data files, 17 road fixtures, module skeletons, `tests/conftest.py`, `tests/test_project.py` (10 tests pass).
+- Ruling: Phase 3 gets a fifth builder for `trips/services/answer.py` (Opus). Why: it is pure and money-critical, and Phase 4 should be integration only. Cost if wrong: one more agent run.

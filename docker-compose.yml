@@ -1,0 +1,28 @@
+# PostgreSQL for the Mile Marker API.
+#
+#   docker compose up -d db      start the database
+#   docker compose down          stop it (add -v to delete its data as well)
+#
+# The user, password and database name below are local development defaults, not secrets.
+# They match the default DATABASE_URL in config/settings.py.
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: milemarker
+      POSTGRES_PASSWORD: milemarker
+      POSTGRES_DB: milemarker
+    ports:
+      # Set POSTGRES_PORT if 5432 is already taken on this machine.
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U milemarker -d milemarker"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata: {}

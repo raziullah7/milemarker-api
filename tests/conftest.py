@@ -1,0 +1,60 @@
+"""Shared test helpers.
+
+No test may reach beyond this machine: pytest-socket (see pyproject.toml) fails any test
+that opens a connection to anything but localhost. Roads come from recorded answers in
+tests/fixtures/roads, and the routing service is always replaced by a fake.
+"""
+
+import gzip
+import json
+from pathlib import Path
+
+import numpy as np
+import pytest
+from django.core.cache import cache
+
+FIXTURES = Path(__file__).parent / "fixtures"
+SMALL_CSV = FIXTURES / "stations_small.csv"
+METRES_PER_MILE = 1609.344
+
+# Recorded answers from the OSRM public server, by short name.
+ROADS = {
+    "nyc_la": "New York to Los Angeles",
+    "sea_mia": "Seattle to Miami",
+    "bos_sea": "Boston to Seattle",
+    "chi_hou": "Chicago to Houston",
+    "dal_hou": "Dallas to Houston",
+    "bos_dc": "Boston to Washington",
+    "det_buf": "Detroit to Buffalo (through Ontario)",
+    "det_bos": "Detroit to Boston (through Ontario)",
+    "det_porthuron": "Detroit to Port Huron",
+    "elpaso_delrio": "El Paso to Del Rio",
+    "houlton_madawaska": "Houlton to Madawaska",
+    "intlfalls_baudette": "International Falls to Baudette",
+    "keywest_miami": "Key West to Miami",
+    "laredo_brownsville": "Laredo to Brownsville",
+    "montauk_nyc": "Montauk to New York",
+    "sandiego_calexico": "San Diego to Calexico",
+    "sea_blaine": "Seattle to Blaine",
+}
+
+
+def load_road_answer(name: str) -> dict:
+    """The routing service's whole recorded answer for a road, as parsed JSON."""
+    with gzip.open(FIXTURES / "roads" / f"{name}.json.gz", "rt", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def load_road(name: str) -> tuple[np.ndarray, float]:
+    """A recorded road as (coords, distance_miles). coords has rows of [lng, lat]."""
+    route = load_road_answer(name)["routes"][0]
+    coords = np.array(route["geometry"]["coordinates"], dtype=float)
+    return coords, route["distance"] / METRES_PER_MILE
+
+
+@pytest.fixture(autouse=True)
+def _empty_cache():
+    """Each test starts with empty caches, so cached trips and rate-limit counts never leak."""
+    cache.clear()
+    yield
+    cache.clear()

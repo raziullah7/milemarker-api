@@ -1,0 +1,45 @@
+[project]
+name = "milemarker-api"
+version = "0.1.0"
+description = "Plans the cheapest fuel stops along a driving route in the USA"
+requires-python = ">=3.12"
+dependencies = [
+    "dj-database-url>=3.1.2",
+    "django>=6.1,<6.2",
+    "djangorestframework>=3.18,<3.19",
+    "gunicorn>=27.0.1",
+    "httpx>=0.28.1",
+    "numpy>=2.5.5",
+    "psycopg[binary]>=3.3.9",
+    "scipy>=1.18.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "pytest-django>=4.14.0",
+    "pytest-socket>=0.8.1",
+    "ruff>=0.17.5",
+]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+pythonpath = ["."]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+# No test may reach beyond this machine. pytest-socket fails any test that opens a
+# connection to anything but localhost. (The PostgreSQL driver connects outside Python's
+# socket module, so the local database is unaffected.)
+addopts = "-ra --disable-socket --allow-hosts=127.0.0.1,::1"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# docs/ holds records and research scripts; they are not part of the application.
+extend-exclude = ["**/migrations/*.py", "docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "DJ", "SIM", "PT", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["E501"]
