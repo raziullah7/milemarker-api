@@ -129,7 +129,7 @@ milemarker-api/
 
 ## 6. The offline path: seed data
 
-`python manage.py load_stations` runs once after `migrate`. It is safe to run again: it replaces the table inside one transaction. `--csv` and `--cities` override the default paths under `data/`.
+`python manage.py load_stations` runs once after `migrate`. It is safe to run again: it replaces the table inside one transaction. A running API keeps the stations it read at start, so after loading changed data restart it (`docker compose restart api`): until then every worker answers from the old data, and a worker that restarted alone would answer from the new. `--csv` and `--cities` override the default paths under `data/`.
 
 | Step | What happens | Count (*measured*) |
 |---|---|---|
@@ -342,6 +342,14 @@ The cache now outlives the process: a cached answer survives a restart of the AP
 
 The version number is one integer, `CACHE_KEY_VERSION`, in `config/settings.py`, used as the cache's `VERSION`. It is raised by hand whenever the shape of a cached value or a planning rule changes; the comment beside it says so.
 
+### The rate-limit counter
+
+The limit is 60 requests in a minute for each client (NFR-16). It is counted in the cache, so every worker shares the count.
+
+- **A window opens with a client's first request and lasts 60 seconds.** The 61st request inside it is answered 429, with the seconds left in the window as `retry_after_seconds` and in the `Retry-After` header. The next request after the window ends opens a new one.
+- **Each request is counted with one atomic step,** the cache's own increment (Redis `INCR`). The framework's built-in limiter reads a client's history, adds to it and writes it back; with two workers of four threads on one Redis, requests sent at once overwrote each other's entries, and 164 of 300 passed (*measured*, review QA-1). The limiter in `trips/throttling.py` replaces it.
+- **Which addresses.** The route, the schema and the Swagger page count against the one limit. The health address does not. Neither does an answer given before any view runs: the 404 for an unknown address and the 400 for a host that is not allowed.
+
 ### When Redis cannot be reached (D-16)
 
 The API still answers. Each process falls back to its own memory for both caches and the rate-limit counters, and returns to Redis when it is back. No request fails, or is slowed by more than about half a second, because of Redis (NFR-18).
@@ -349,6 +357,7 @@ The API still answers. Each process falls back to its own memory for both caches
 - **Timeouts.** A connection to Redis times out after 0.1 seconds and a command after 0.25 seconds, with no retries. "About half a second" in NFR-18 is tested as 0.5 seconds: a request with Redis unreachable takes no more than 0.5 seconds longer than the same request with Redis up.
 - **A deadline on every call.** The two timeouts cover a Redis that refuses or hangs. They do not cover looking up its name: when the Redis container is stopped its name leaves Docker's DNS, and the lookup alone took 4 seconds to fail (*measured*, in a container on the Compose network; 1 second with the resolver told to try once for one second). So the cache class runs each Redis call on a small pool of threads and waits for it at most 0.4 seconds, more than the two timeouts together. A call that misses the deadline falls back like one that could not connect, and is left to finish by itself.
 - **Trying again.** A process that has fallen back does not touch Redis for 30 seconds, then tries again. A dead Redis therefore costs one short timeout every 30 seconds, not one per request. A try that fails starts another 30 seconds of fallback.
+- **What counts as unreachable.** Any error of the Redis client: a refused connection, a timeout, a missed deadline, and also an error Redis answers with, such as a database that does not exist or a server that is read-only. Each falls back in the same way. An answer that arrives late, from a call sent before the outage began, does not end the fallback: only the one try made after the 30 seconds can.
 - **What is logged.** Each process logs one warning when it falls back, and one line when it returns to Redis. A failed try during the same outage logs nothing new, so a worker logs one warning per outage (acceptance check 13).
 
 During the outage:
@@ -470,7 +479,7 @@ Only GET is specified. HEAD and OPTIONS are left to the framework's defaults; ev
 | `GET /api/v1/schema/` | The OpenAPI 3.0.3 document, produced from the code by `drf-spectacular` (FR-19, D-20) | Yes |
 | `GET /api/v1/docs/` | The Swagger page: an interactive view of that document | Yes |
 
-Only the health address is exempt from the rate limit. Every other address, the schema and the Swagger page included, is limited like the route.
+The schema and the Swagger page are limited like the route, against the same count. The health address is exempt. An unknown address (404) and a host that is not allowed (400) are answered before any view runs, and are not counted either (section 10).
 
 **The health answer.** `stations` is the number of stations in the in-memory index. Asking for it loads the index if it is not loaded yet, as a route request does, so the Django ORM is still used in only the two places of section 3, and an empty table gives `stations_not_loaded`. `cache` describes the worker process that answered:
 
@@ -686,13 +695,13 @@ All of it comes from the environment (NFR-20). Every default makes a fresh clone
 |---|---|---|
 | `DJANGO_SECRET_KEY` | None: a random key is made at start-up | Django's secret key. Nothing is signed, so the workers need not share it (D-21) |
 | `DJANGO_DEBUG` | Off | Django's debug mode |
-| `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1,[::1]` | The host names the API answers to. Any other gets 400 `invalid_request` (D-21) |
+| `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1,[::1]` | The host names the API answers to. Any other gets 400 `invalid_request` (D-21). `127.0.0.1` is always allowed, whatever the variable says: the container's health check asks under that name |
 | `DJANGO_NUM_PROXIES` | `0`; the Compose file sets `1` | How many proxies in front of the API to trust when finding a client's address for the rate limit (D-17) |
 | `DATABASE_URL` | `postgresql://milemarker:milemarker@127.0.0.1:5432/milemarker`; the Compose file points it at `db`. The address is `127.0.0.1`, not `localhost`: the database is published on `127.0.0.1` only, and a machine that tries IPv6 first for `localhost` waits seconds on every connection | The PostgreSQL connection (NFR-10) |
 | `REDIS_URL` | Unset: each process uses its own memory | The Redis that holds the caches and the rate-limit counters (D-15). The Compose file points it at `redis` |
 | `ROUTING_SERVERS` | The two public servers of section 9 | The routing servers: URL templates separated by commas, each containing `{coords}`, tried in order. The end-to-end run points it at the stand-in |
-| `WEB_CONCURRENCY` | 2 | The number of gunicorn worker processes (NFR-19) |
-| `LOG_LEVEL` | `INFO` | The lowest level of message written to the log |
+| `WEB_CONCURRENCY` | 2 | The number of gunicorn worker processes (NFR-19). A whole number of 1 or more |
+| `LOG_LEVEL` | `INFO` | The lowest level of message written to the log: `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL` |
 
 **`ROUTING_SERVERS` is checked at start-up.** Each entry is trimmed, and empty entries are dropped. At most two entries are allowed, because a request never makes more than two routing calls (NFR-2); a third is refused like any other bad value. A value that is empty or only spaces counts as not set, and the two public servers are used: Compose passes the variable through, so on a fresh clone it arrives empty. If the value is anything else and no entry is left, or an entry has no `{coords}`, the API refuses to start: Django raises `ImproperlyConfigured`, naming the variable and the entry.
 

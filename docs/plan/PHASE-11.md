@@ -41,6 +41,30 @@ Baseline: `PLAN.md`, Part 2, Phase 11. The riskiest change of Part 2, so it come
 - Corrected by the controller, where the code was right and the document was not: architecture section 11 showed `station_id` as text (it is an integer), and said nothing of the empty `fields` that a request Django will not read answers with; the settings' opening comment said the service has no templates.
 - Ruling: nginx's `api_unavailable` message is fixed now as "The API cannot be reached.", the wording the OpenAPI document shows, and written into `PHASE-12.md` for the builder of the front door.
 
+### Rulings on the review (QA-1)
+
+QA-1 found 0 Critical, 2 Important, 6 Minor and 7 Notes (`reports/phase11-Q1.md`). It also removed each safety in a scratch copy: the suite noticed all nine removals the brief lists, and a tenth.
+
+| Finding | Ruling | Where |
+|---|---|---|
+| Q1-01 Important. The rate limit leaks when one client sends requests at once: 164 of 300 passed | Fixed. The framework's limiter reads, adds and writes back; ours counts with the cache's atomic increment, in a window that opens with the client's first request. The cache class passes `incr` through to Redis | Fix wave 11F |
+| Q1-02 Important. Setting `DJANGO_ALLOWED_HOSTS` to the deployment's own name makes the health check fail, and in Phase 12 the stack would never start | Fixed. `127.0.0.1` is always allowed. The API builds no address from the host name, so the name the health check uses opens nothing | 11F |
+| Q1-03 Minor. A Redis error that is neither a refused connection nor a timeout answers 500 on every request | Fixed for every error of the Redis client: each falls back. Stands for a cached value that can no longer be read after a change of code: `CACHE_KEY_VERSION` exists for that, and the comment beside it says so; catching every error of a read would hide real faults | 11F; the README says how to empty the cache (Phase 13) |
+| Q1-04 Minor. A late success ends a fallback that has just begun | Fixed. Only the try made after the 30 seconds can end a fallback | 11F |
+| Q1-05 Minor. gunicorn answers a request line over 4,094 bytes with its own HTML 414 | Fixed in part now: the limit is raised to gunicorn's highest, 8,190 bytes, so a long address reaches the API and gets its JSON 400. Above that gunicorn still answers in HTML, which gunicorn gives no way to change. From Phase 12 nginx refuses such a line first, in JSON; its own limit must sit below gunicorn's, and a test sends a 5,000-byte line through it | 11F; Phase 12 |
+| Q1-06 Minor. The Redis canary fails when any key in databases 0 to 14 expires during the tests | Fixed. It compares key names: none new, and the canary still there | 11F |
+| Q1-07 Minor. Bad values of `DJANGO_NUM_PROXIES`, `LOG_LEVEL` and `WEB_CONCURRENCY` are not refused at start, or not by name | Fixed. Each is checked as `ROUTING_SERVERS` is, and the refusal names the variable | 11F |
+| Q1-08 Minor. The schema tests compare the parameters with numbers written in the tests | Fixed. The document takes each parameter's limits and default from the serializer, and a test changes a limit and sees the document follow | 11F |
+| Q1-09 Note. The architecture said every address but health is rate limited | Fixed by the controller: an unknown address and a refused host are answered before any view and are not counted | done |
+| Q1-10 Note. The document lacks `multipleOf`, the trimming of the two place names, and the form of a request ID | The trimming and the ID's form are added. `multipleOf: 0.01` stands out: validators test it with floating-point division, and would refuse sound values such as 0.07 | 11F |
+| Q1-11 Note. The cache keys do not carry the routing server | Stands. Changing `ROUTING_SERVERS` on a live cache is an operator's act with a one-line remedy, restarting Redis, which keeps nothing. The end-to-end stack has a database of its own for this reason. Said in the README (Phase 13) | Phase 13 |
+| Q1-12 Note. After `load_stations` on a running stack the workers keep the old stations | Stands, and is now said in architecture section 6: restart the API after loading changed data | done |
+| Q1-13 Note. At one trusted proxy with no proxy in front, a forged address picks the bucket | Confirms the ruling to keep 0 in this phase. The Phase 12 brief already demands that nginx overwrite the header | Phase 12 |
+| Q1-14 Note. The running image carries `pip` and `apt` from the base image | Stands. They come with the official image; nothing runs them, and the process cannot write where they would install | — |
+| Q1-15 Note. gunicorn 27 opens a control socket in the app user's home | Given to QA-3 | Phase 12 |
+
+Not checked by QA-1, and what covers it: the fresh start from `down -v`, the Postman collection and the repeats across both workers were run by the controller (ledger). The Python base image's digest was pulled by that digest in CI's image job.
+
 ## Gate 11 checklist
 
 - [ ] The controller has read every diff.

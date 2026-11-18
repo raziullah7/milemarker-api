@@ -50,6 +50,8 @@ default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src
 
 It follows that the viewer loads no script, style or font from another origin: fonts are bundled, and the map library's worker is one of the page's own files.
 
+**Request lines.** gunicorn accepts a request line of up to 8,190 bytes and answers a longer one with its own HTML, which cannot be changed. nginx must therefore refuse, in JSON, any line gunicorn would refuse: its own limit sits below 8,190 bytes. A line of 5,000 bytes must pass nginx and get the API's JSON 400 (review QA-1, finding Q1-05).
+
 ## Rulings
 
 - Ruling: the trial is the first part of the viewer builder's work, and the builder stops after it. The controller then opens the trial page in a real browser on this machine, looks at it, measures the frame rate, and decides globe or flat map before the build goes on. Why: a headless browser draws with software, so its frame rate says nothing; only a look on real graphics settles it. Cost if wrong: one round trip.
