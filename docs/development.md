@@ -17,7 +17,7 @@ uv run python manage.py runserver 127.0.0.1:8001
 Then the tests and the checks:
 
 ```bash
-uv run pytest            # the suite, about three minutes
+uv run pytest            # the suite: three to four minutes on Windows, under two in the container
 uv run pytest -m slow    # one slow test of the fuel plan against brute force
 uv run ruff check .
 uv run mypy

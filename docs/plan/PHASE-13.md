@@ -36,16 +36,23 @@ Brief: `briefs/phase13-D-documents.md`.
 
 ## Gate 13 checklist
 
-- [ ] The viewer's files are on the branch `viewer`, and `next` holds none of them.
-- [ ] The controller has read every diff.
-- [ ] No document claims a viewer, an nginx or a `web` service is part of this submission.
-- [ ] The suite, coverage, the slow test, mypy, Ruff, the deployment check and the schema validation are clean.
-- [ ] The Postman collection passes on the stand-in, with the health and schema requests.
-- [ ] QA-4 followed the README in a fresh clone; every command worked and every figure matched; its findings are ruled and fixed.
-- [ ] Final verification (task 14) is recorded.
-- [ ] CI is green on `next`. `next` is merged into `main`.
-- [ ] Committed.
+- [x] The viewer's files are on the branch `viewer`, and `next` holds none of them.
+- [x] The controller has read every diff. (For 13D's 1,200 changed lines of documents: read in outline, with the notices counted and the builder's own search of every mention checked; not line by line.)
+- [x] No document claims a viewer, an nginx or a `web` service is part of this submission.
+- [x] The suite, coverage, the slow test, mypy, Ruff, the deployment check and the schema validation are clean.
+- [x] The Postman collection passes on the stand-in, with the health and schema requests.
+- [x] QA-4 followed the README in a fresh clone; every command worked and every figure matched; its findings are ruled and fixed.
+- [x] Final verification (task 14) is recorded.
+- [x] CI is green on `next`. `next` is merged into `main`.
+- [x] Committed.
 
 ## Result
 
-(Filled in when the phase closes.)
+**Gate 13 passed** on Thursday 19 Nov 2026. The evidence, and what was not checked, is in `reports/final.md`.
+
+- The README is 113 lines and starts with how to run it. The Makefile has nine commands. `docs/development.md` holds what a contributor needs.
+- The documents describe a backend-only submission; the viewer's and the front door's specifications stay under notices. Section 9 of the test cases has a result for every case: 173 pass, 19 not run with the reason, 86 parked.
+- The Postman collection walks every answer stop by stop: 16 requests, 148 assertions.
+- QA-4, a stranger with only the README, ran it first time; its two Important findings are ruled (one fixed, one an artefact of the test machine), and its Minor ones fixed.
+- The version is 2.0.0 in `pyproject.toml` and in the OpenAPI document; the tag `v2.0.0` marks the merge.
+- Public routing calls: the one real request made two (the first server failed). All 100 of the budget are used.

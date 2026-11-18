@@ -1,6 +1,8 @@
 # Mile Marker API
 
-Give it a start and a finish in the USA. It returns the driving route, where to stop for fuel, and what the fuel will cost. A new trip costs one call to a free routing service; a repeat costs none.
+Give it a start and a finish in the USA. It returns the driving route, where to stop for fuel, and what the fuel will cost. A new trip costs one call to a free routing service, with a second server tried only if the first fails; a repeat costs none.
+
+It answers a take-home task: an API that takes a start and a finish in the USA and returns a map of the route, the most cost-effective fuel stops for a vehicle with a 500-mile range at 10 miles per gallon, and the total fuel cost, using a supplied list of fuel prices.
 
 ## Run it
 
@@ -12,15 +14,17 @@ cd milemarker-api
 docker compose up --build -d
 ```
 
-The first start takes about a minute: it loads 6,626 fuel stations. Then open **http://127.0.0.1:8000/api/v1/docs/** and try a trip from the page, or use curl:
+The first start takes a minute or two: it builds the image and loads 6,626 fuel stations. It is ready when http://127.0.0.1:8000/api/v1/health/ answers `{"status": "ok", ...}`. Then open **http://127.0.0.1:8000/api/v1/docs/** and try a trip from the page (the page loads its script from a CDN), or use curl:
 
 ```bash
 curl "http://127.0.0.1:8000/api/v1/route/?start=New%20York,%20NY&finish=Los%20Angeles,%20CA"
 ```
 
-Stop it with `docker compose down`. If port 8000 is taken, put `API_PORT=8100` in a file named `.env` before starting.
+A new trip takes a few seconds, which is the routing call; a repeat takes milliseconds. Stop it with `docker compose down`. If port 8000 is taken, put `API_PORT=8100` in a file named `.env` before starting.
 
 ## What comes back
+
+Shortened:
 
 ```json
 {
@@ -62,11 +66,11 @@ docker compose --profile test run --rm test
 
 The code for each step is in [`trips/services/`](trips/services/), and [`planner.py`](trips/services/planner.py) runs them in order.
 
-**Choosing the stops.** The vehicle goes 500 miles on a tank at 10 miles per gallon. The cheapest possible fuel bill for New York to Los Angeles takes 19 stops, one of them for about half a gallon, to save $11. Nobody drives like that. So while the plan is chosen, each stop is charged $10; the charge is never added to the bill. That gives 7 stops for $867.27. Send `stop_cost=0` to get the cheapest bill whatever the number of stops. The response shows both figures.
+**Choosing the stops.** The vehicle goes 500 miles on a tank at 10 miles per gallon. The cheapest possible fuel bill for New York to Los Angeles takes 19 stops, one of them for about half a gallon, to save $11. Nobody drives like that. So while the plan is chosen, each stop is charged $10; the charge is never added to the bill. That gives 7 stops for $867.27. Send `stop_cost=0` to get the cheapest bill whatever the number of stops. The response shows both: `total_fuel_cost` and `lowest_possible_fuel_cost`.
 
 ## Beyond the brief
 
-Each of these is more than the task asked for. One line on why it is there:
+The task asked for the route, the stops and the cost, quickly, with as few routing calls as possible. Each of these is more than that. One line on why it is there:
 
 | What | Why |
 |---|---|
@@ -87,7 +91,7 @@ The task left some things open. The ones that matter most:
 - Places are a city and state in the lower 48 states and DC. Street addresses and ZIP codes are not understood.
 - A road that runs through Canada or Mexico is refused.
 
-All fifteen decisions, each with the measurement behind it, are in [`docs/requirements.md`](docs/requirements.md).
+All the decisions, each with the measurement behind it, are in [`docs/requirements.md`](docs/requirements.md).
 
 ## Known limits
 
