@@ -40,10 +40,24 @@ Briefs: `briefs/phase15-F1-places.md`, `briefs/phase15-F2-backend.md`, then the 
 
 ## Gate 15
 
-- [ ] Ruff, format, mypy, the deployment check, the migration check, schema validation, and the OpenAPI document in sync
-- [ ] The full suite in the container, with coverage of at least 98%, and the slow test
-- [ ] Live, with requests that never route: `Dallas` suggests `Dallas, TX` first; `Dalas` suggests `Dallas, TX`; health is 200
-- [ ] The database-down proof gives 503 on both addresses
-- [ ] Postman on the stand-in: every assertion passes, 8 routing calls
-- [ ] QA-5's findings ruled; Critical and Important fixed and re-reviewed
+- [x] Ruff, format, mypy, the deployment check, the migration check, schema validation, and the OpenAPI document in sync
+- [x] The full suite in the container, with coverage of at least 98%, and the slow test
+- [x] Live, with requests that never route: `Dallas` suggests `Dallas, TX` first; `Dalas` suggests `Dallas, TX`; health is 200
+- [x] The database-down proof gives 503 on both addresses
+- [x] Postman on the stand-in: every assertion passes, 8 routing calls
+- [x] QA-5's findings ruled; Critical and Important fixed and re-reviewed
 - [ ] CI green on `next`; merged into `main`; tagged `v2.1.0`
+
+## Result
+
+The evidence, all gathered by the controller unless another reviewer is named:
+
+- **Code fixes:** I1, I2 and M5. Each has tests that fail on `v2.0.0` and pass now, as QA-5 proved on a clean export of each.
+  - I1: all 50 of the largest cities suggest their own state first, up from 42. A misspelling with no state gets the closest large place first, so `Orlndo` gives Orlando.
+  - I2: a refused trip asked three times makes 1 routing call, not 3. QA-5 found the answer byte for byte the same, through Redis as well.
+  - M5: with the database unreachable, health and route answer 503 `stations_not_loaded`, not 500.
+- **Documents:** the other eight findings each have one true sentence, and QA-5 checked every changed sentence against the code.
+- **Tests and checks:** 662 tests pass in a container rebuilt from `b8952e0`, up from 597. Coverage is 98.52% on 5cd97c0. The slow test, Ruff, mypy, the deployment and migration checks, and schema validation are clean.
+- **The rebuilt stack:** `Dallas` gives TX first, `Dalas` gives Dallas, TX, and `Springfield, ZZ` gives MO, MA, IL, OR and OH. On the stand-in, Postman ran 16 requests and 148 assertions with none failing, and made 8 routing calls, every one matched.
+- **QA-5 (Opus)** found 0 Critical, 1 Important, 3 Minor and 6 Notes. The Important finding (the misspelling order), the 3 Minor ones and 3 of the Notes were fixed. The other 3 Notes are ruled with reasons in `reports/phase15-QA.md`. A fresh scoped re-review (Sonnet) confirmed the fixes; the stale test count it found is corrected.
+- **Version and cost:** the version is 2.1.0 and the cache version is 2. No public routing call was made.

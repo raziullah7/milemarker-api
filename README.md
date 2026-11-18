@@ -55,7 +55,7 @@ Shortened:
 docker compose --profile test run --rm test
 ```
 
-656 tests, about two minutes. None of them reaches the internet.
+662 tests, about two minutes. None of them reaches the internet.
 
 ## How it works
 

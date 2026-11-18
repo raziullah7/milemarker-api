@@ -11,7 +11,7 @@ Conventions:
 - Prices, gallons and money are compared as exact decimals, not floating point, unless a tolerance is given.
 - "Mile 100" is a distance along the road from the start. A station "4.9 mi N" lies 4.9 miles north of the road.
 
-**Status.** The suite has 656 tests, with the slow exactness test deselected and none skipped. All passed when the controller ran them at the close of Phase 15 (release 2.1.0). Coverage at the close of Phase 15 was 98.52% (measured by the controller on 5cd97c0), against a floor of 98%. Section 9 holds 279 cases: 171 Pass, 19 Not run, 3 Fail and 86 Parked. A suite case's Actual names its test, and Pass means that test passes in the suite. A stack case's Actual names the run. Parked means the case belongs to the viewer or to nginx, which are not part of this submission.
+**Status.** The suite has 662 tests, with the slow exactness test deselected and none skipped. All passed when the controller ran them at the close of Phase 15 (release 2.1.0). Coverage at the close of Phase 15 was 98.52% (measured by the controller on 5cd97c0), against a floor of 98%. Section 9 holds 279 cases: 171 Pass, 19 Not run, 3 Fail and 86 Parked. A suite case's Actual names its test, and Pass means that test passes in the suite. A stack case's Actual names the run. Parked means the case belongs to the viewer or to nginx, which are not part of this submission.
 
 ## 1. How the tests are organised
 
