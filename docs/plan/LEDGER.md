@@ -30,3 +30,4 @@ Repo: this repository (commit identity must be `Razi Ullah <50240668+raziullah7@
 - Phase 3 started. Briefs in `briefs/phase3-*.md`. Five builders dispatched in parallel from the commit recorded on the next line: 3A data (Sonnet), 3B geometry and search (Opus), 3C fuel (Opus), 3D routing (Sonnet), 3F answer (Opus). Each owns its own files; none commits.
 - Phase 3 BASE: 56fd7db
 - Phase 3 task 3D (routing client) reviewed by the controller: diff and tests read in full. Three small changes made in review: 'no road' is recognised by its code whatever the status; the clock is also checked when the headers arrive; an empty server list reports reason error. 18 tests pass.
+- Phase 3 task 3A (data side) reviewed by the controller: places.py, index.py, the loader and the model read in full. The controller ran the real loader (8151 rows, 6738 stations, 6626 in coverage, 6615 + 11 placed, 6626 saved; a second run also 6626) and the 68 tests. No changes needed.
