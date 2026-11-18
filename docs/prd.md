@@ -25,13 +25,15 @@ Truck stop prices range from $2.69 to $6.40 a gallon in the supplied file, and a
 
 ## 5. Non-goals
 
-Accounts or keys, trips with more than two points, comparing routes, live prices, station data from outside the CSV, street addresses and ZIP codes, places outside the lower 48 states and DC, per-request range or fuel economy, and a frontend.
+Accounts or keys, trips with more than two points, comparing routes, live prices, station data from outside the CSV, street addresses and ZIP codes, places outside the lower 48 states and DC, per-request range or fuel economy, a trip-planning form, saved trips, and hosting.
 
 ## 6. Scope
 
 **First release:** every need (FR-1 to FR-11, NFR-1 to NFR-10), then the wants (FR-12 to FR-16, NFR-11 to NFR-16).
 
-**Later:** FR-17 to FR-19, NFR-17, NFR-18.
+**Second release:** FR-18 to FR-26 and NFR-17 to NFR-31, with NFR-9 and NFR-16 changed. FR-26 and NFR-9 are needs; the rest are wants. This adds the map viewer, the OpenAPI page, Redis, two workers behind nginx, CI and the Makefile.
+
+**Later:** FR-17.
 
 Settled choices are in the decisions table of `requirements.md`.
 
@@ -53,7 +55,7 @@ Each stop is charged $10 while the plan is chosen, standing for the time it take
 
 ## 9. Release criteria
 
-Done means the ten acceptance checks in `requirements.md` section 9 pass. They cover a correct, cached New York to Los Angeles plan; short trips; Los Angeles starts; the four rejected trips; the map; the fuel tests; one-command start; and submission before Friday 20 Nov 2026, 8 pm.
+Done means the twenty acceptance checks in `requirements.md` section 9 pass. Checks 1 to 10, the first release's, cover a correct, cached New York to Los Angeles plan; short trips; Los Angeles starts; the four rejected trips; the map; the fuel tests; one-command start; and submission before Friday 20 Nov 2026, 8 pm. Checks 11 to 20, added for the second release, cover the whole stack from one command behind the proxy; cache hits on either worker; a Redis outage; the rate limit against forged addresses; the health, OpenAPI and Swagger addresses; the deployment check and CI; the end-to-end run with no internet; the viewer playing New York to Los Angeles; its fallbacks and accessibility; and the `make` targets.
 
 ## 10. Risks and known limits
 
@@ -63,7 +65,7 @@ Done means the ten acceptance checks in `requirements.md` section 9 pass. They c
 | Some roads have no fuel listed | `no_fuel_plan` error; no invented stop |
 | Car routing, not truck routing | Stated; openrouteservice is the first later addition |
 | Free routing servers, no uptime promise | Second server; clear error within 10 seconds |
-| Cache is per process | One process with threads; shared cache is a nice-to-have |
+| Cache and rate limit are per process while Redis is down | Requests are still answered from each process's own memory; one warning; back to Redis when it returns (D-16) |
 | Coarse border outlines | 25-mile abroad limit against 10 measured |
 | Docker needed for PostgreSQL | One Compose command |
 | Map not yet checked in geojson.io | Check on a coast-to-coast trip |
