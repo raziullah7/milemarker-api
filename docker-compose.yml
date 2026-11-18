@@ -17,12 +17,17 @@ services:
       POSTGRES_PASSWORD: milemarker
       POSTGRES_DB: milemarker
     ports:
-      # Set POSTGRES_PORT if 5432 is already taken on this machine.
-      - "${POSTGRES_PORT:-5432}:5432"
+      # On 127.0.0.1 only: the password above is a published default, so the database must
+      # not be reachable from the network. Set POSTGRES_PORT if 5432 is already taken.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U milemarker -d milemarker"]
+      # -h makes the check use the network, not the local socket. During its first start
+      # PostgreSQL answers on the socket before it accepts network connections, and the
+      # API connects over the network.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U milemarker -d milemarker"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -33,8 +38,10 @@ services:
       # "db" is the service name; inside Compose it resolves to the database container.
       DATABASE_URL: postgresql://milemarker:milemarker@db:5432/milemarker
     ports:
-      # Set API_PORT if 8000 is already taken on this machine.
-      - "${API_PORT:-8000}:8000"
+      # On 127.0.0.1 only: this machine, not the network it is on.
+      # Set API_PORT if 8000 is already taken.
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy

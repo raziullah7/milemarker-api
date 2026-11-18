@@ -40,6 +40,40 @@ markers = [
     "slow: the full-size exactness checks; run them with: uv run pytest -m slow",
 ]
 
+[tool.coverage.run]
+# Branches as well as lines: a line that runs is not proof that both ways through it do.
+branch = true
+source = ["config", "stations", "trips"]
+omit = ["*/migrations/*"]
+
+[tool.coverage.report]
+# The floor: the figure measured when it was set (98.4%), rounded down. A change that
+# lowers coverage below it fails the run.
+fail_under = 98
+show_missing = true
+skip_covered = true
+
+[tool.mypy]
+# The modules that hold the rules and import nothing from Django. The Django layer is left
+# out: its type stubs do not yet declare support for Django 6.1.
+files = [
+    "stations/sphere.py",
+    "stations/types.py",
+    "trips/services/fuel.py",
+    "trips/services/geo.py",
+    "trips/services/corridor.py",
+    "trips/services/answer.py",
+]
+python_version = "3.12"
+check_untyped_defs = true
+disallow_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+# numpy ships its own types; scipy does not.
+[[tool.mypy.overrides]]
+module = ["scipy.*"]
+ignore_missing_imports = true
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

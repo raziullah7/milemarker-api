@@ -6,7 +6,7 @@ __pycache__
 *.pyc
 .pytest_cache
 .ruff_cache
-.env
+.env*
 
 # Research working data, fetched again by its scripts.
 docs/plan/research/cache

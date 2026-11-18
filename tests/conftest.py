@@ -36,6 +36,11 @@ ROADS = {
     "montauk_nyc": "Montauk to New York",
     "sandiego_calexico": "San Diego to Calexico",
     "sea_blaine": "Seattle to Blaine",
+    # Added for the end-to-end run: the trips of the Postman collection that had no recording.
+    "la_nyc": "Los Angeles to New York",
+    "stl_winstonsalem": "St. Louis to Winston-Salem",
+    "dal_phx": "Dallas to Phoenix",
+    "la_sea": "Los Angeles to Seattle (no fuel listed along it)",
 }
 
 

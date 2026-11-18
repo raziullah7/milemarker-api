@@ -35,6 +35,7 @@ The repository root is the folder you were given; every path is relative to it.
 | N5 | A comma-free country name is treated as a country only when no trailing `USA` was removed. `Mexico, USA` is an unknown place with suggestions again; `Mexico` alone is still outside coverage. Tests for both. |
 | N7 | (a) AN-11's second half can fail: give it a purchase worth at least a cent, or assert the gallons. (b) `test_complete_answer_obeys_the_correctness_rules` calls the verifier, or is renamed to what it checks. (c) One trip, New York to Los Angeles at stop cost 10, is pinned stop by stop: each stop's station ID, mile marker, gallons and cost. |
 | N8 | A lock around the creation of the shared HTTP client, so two first requests cannot each make one. |
+| Types | `uv run mypy` checks the Django-free modules (its settings are in `pyproject.toml`) and reports nine errors today, in `stations/sphere.py`, `trips/services/fuel.py` and `stations/exceptions.py`. Make it pass with type annotations and, where a value can be `None`, an explicit check that states what the code already assumes. These three files are yours for this only. No behaviour may change: the fuel tests and the slow exactness test must pass exactly as before, and you add no `type: ignore` without a reason beside it. |
 
 ## Prove it
 

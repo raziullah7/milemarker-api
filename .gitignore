@@ -5,8 +5,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
-# Local settings
-.env
+# Local settings, under any name (.env, .env.local, .env.production); the example is kept
+.env*
+!.env.example
 
 # Research working data: cached routes and outlines, fetched again by the scripts
 docs/plan/research/cache/
