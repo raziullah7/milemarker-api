@@ -55,7 +55,19 @@ Rules that follow from this:
 - Business errors are plain Python exceptions carrying a code, a message and details. They know nothing about HTTP. `trips/errors.py` is the one place that maps a code to a status.
 - Longitude is called `lng` in every name. Only GeoJSON coordinate pairs are written `[lng, lat]`.
 
-In Django terms the "controller" is the **view**. Patterns used, by their usual names: thin views, a service layer, a gateway around the external API, and an in-memory read model.
+In Django terms the "controller" is the **view**. The design patterns used, by their usual names:
+
+| Pattern | Where | What it rules out |
+|---|---|---|
+| Thin view over a service layer | `trips/views.py`, `trips/services/planner.py` | Business rules in a view; a rule that needs HTTP to be tested |
+| Gateway to the external API | `trips/services/routing.py` | A second module that calls out; a call with no deadline |
+| Cache-aside with versioned keys | `plan_trip` steps 4 and 6; `CACHE_KEY_VERSION` | A cached answer served after the prices or the code changed (section 10) |
+| Graceful degradation | `config/cache.py`, `RedisWithFallback` | A failed request because Redis is down |
+| In-memory read model, loaded once | `stations/index.py`, behind a double-checked lock | A request that waits on the database; two threads reading the table at once |
+| Spatial index | `trips/services/corridor.py`, a KD-tree | A scan of every station for every point of the road |
+| Dynamic programming | `trips/services/fuel.py`, `plan_stops` | A plan that is not the cheapest once each stop has a cost; checked by linear programming and brute force (section 13) |
+| One error envelope | `stations/exceptions.py`, `trips/exceptions.py`, `trips/errors.py` | An error that knows its HTTP status; a second error shape |
+| Test doubles and an oracle | `scripts/fake_osrm.py`, `tests/fixtures/roads/`, `tests/verify.py` | A test that reaches the network; a test that checks the code against itself |
 
 ## 4. Folder layout
 

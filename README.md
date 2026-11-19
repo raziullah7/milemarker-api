@@ -1,5 +1,7 @@
 # Mile Marker API
 
+![New York to Los Angeles: the route and its 7 fuel stops](docs/images/route-nyc-la.png)
+
 Give it a start and a finish in the USA. It returns the driving route, where to stop for fuel, and what the fuel will cost. A new trip costs one call to a free routing service, with a second server tried only if the first fails; a repeat costs none.
 
 It answers a take-home task: an API that takes a start and a finish in the USA and returns a map of the route, the most cost-effective fuel stops for a vehicle with a 500-mile range at 10 miles per gallon, and the total fuel cost, using a supplied list of fuel prices.
@@ -59,6 +61,16 @@ docker compose --profile test run --rm test
 
 ## How it works
 
+```mermaid
+flowchart LR
+    C["Client"] -->|"GET /api/v1/route/"| V["RouteView, trips/views.py"]
+    V --> P["plan_trip, trips/services/planner.py"]
+    P <-->|"road and answer, 24 h"| R[("Redis")]
+    P --> I["Station index, in memory"]
+    DB[("PostgreSQL: 6,626 stations")] -.->|"read once at start-up"| I
+    P -->|"one call per new trip"| O["OSRM routing server"]
+```
+
 1. Both places are looked up in an offline table. Nothing is geocoded over the network.
 2. The road comes from one call to the OSRM public server, and is cached for 24 hours.
 3. Every station within 5 miles of the road is found from an index held in memory.
@@ -67,6 +79,36 @@ docker compose --profile test run --rm test
 The code for each step is in [`trips/services/`](trips/services/), and [`planner.py`](trips/services/planner.py) runs them in order.
 
 **Choosing the stops.** The vehicle goes 500 miles on a tank at 10 miles per gallon. The cheapest possible fuel bill for New York to Los Angeles takes 19 stops, one of them for about half a gallon, to save $11. Nobody drives like that. So while the plan is chosen, each stop is charged $10; the charge is never added to the bill. That gives 7 stops for $867.27. Send `stop_cost=0` to get the cheapest bill whatever the number of stops. The response shows both: `total_fuel_cost` and `lowest_possible_fuel_cost`.
+
+![The same trip planned two ways: 19 stops for the cheapest bill, 7 by default](docs/images/stops-compared.png)
+
+## Built with
+
+| | |
+|---|---|
+| Framework | Django 6.1 and Django REST Framework 3.18 |
+| Data | PostgreSQL 17 holds the supplied fuel prices; Redis 8 holds the cache |
+| Routing | The free OSRM public servers, with no key |
+| Maths | NumPy, and SciPy's KD-tree to find the stations near the road |
+| API docs | drf-spectacular: the OpenAPI document and the docs page |
+| Running | gunicorn (2 workers × 4 threads) in Docker Compose |
+| Tooling | uv, Ruff, mypy, pytest, Postman and Newman, GitHub Actions |
+
+## Design
+
+| Pattern | Where | Why |
+|---|---|---|
+| Thin view over a service layer | [`views.py`](trips/views.py), [`planner.py`](trips/services/planner.py) | The view checks the input and logs the trip. `plan_trip` runs small functions in numbered steps, each testable without HTTP |
+| Gateway to the outside API | [`routing.py`](trips/services/routing.py) | The only module that calls out. A deadline on each call, and a second server if the first fails |
+| Cache-aside with versioned keys | `plan_trip`, steps 4 and 6 | The road and the answer are kept for 24 hours. The key carries a fingerprint of the station data, so an answer never outlives its prices |
+| Graceful degradation | [`config/cache.py`](config/cache.py) | If Redis is down, each worker carries on from its own memory |
+| In-memory read model, loaded once | [`stations/index.py`](stations/index.py) | The stations are read from PostgreSQL once, behind a lock; no request waits on the database |
+| Spatial index | [`corridor.py`](trips/services/corridor.py) | A KD-tree finds the stations within 5 miles of a 2,800-mile road in milliseconds |
+| Dynamic programming | [`fuel.py`](trips/services/fuel.py) | Chooses the stops. The tests check it against linear programming and brute force |
+| One error envelope | [`errors.py`](trips/errors.py) | Business errors carry a code and know nothing of HTTP; one place maps a code to a status |
+| Test doubles and an oracle | [`fake_osrm.py`](scripts/fake_osrm.py), [`verify.py`](tests/verify.py) | Recorded real roads replace the network; an independent checker tests every answer against 17 rules |
+
+More, with the reasons, in [`docs/backend-architecture.md`](docs/backend-architecture.md).
 
 ## Beyond the brief
 
