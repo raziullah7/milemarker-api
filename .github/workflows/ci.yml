@@ -48,7 +48,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # setup-uv publishes exact version tags only after v7, with no moving major tag.
-      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: astral-sh/setup-uv@v10.4.0
         with:
           enable-cache: true
       # --locked fails if uv.lock no longer matches pyproject.toml.
